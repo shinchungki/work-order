@@ -79,6 +79,9 @@ dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .must span{font-size:14px;padding:2px 8px;border:1px solid var(--warn);color:var(--warn);border-radius:6px}
 .hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .hist li{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:16px;padding:8px 10px;background:var(--bg);border-radius:8px}
+.fb{border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:8px;padding:8px 12px;font-size:16px;overflow-wrap:anywhere}
+.fb.fb-2{border-color:var(--warn);background:var(--warn-soft)}.fb.fb-3{border-color:var(--bad);background:var(--bad-soft)}
+.hist .fbwrap{grid-column:1/-1;margin-top:4px}
 .hist .when{grid-column:2;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
 .copybox{white-space:pre-wrap;font-size:16px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;max-height:320px;overflow:auto;overflow-wrap:anywhere}
 .banner{padding:10px 14px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:16px}
@@ -237,7 +240,7 @@ function renderPick(){
 /* ---------- password ---------- */
 const PIN_MSG = { bad: "비밀번호가 맞지 않습니다.", locked: "여러 번 틀려 잠겼습니다. 10분 뒤 다시 하세요.", length: "숫자 6~12자리로 정해 주세요.", same: "받은 번호와 다른 번호로 정해 주세요." };
 function logout(){
-  loadSeq++; me = pin = asking = null; orders = []; reports = []; sends = []; staff = []; options = []; issued = {};
+  loadSeq++; fbEdit = null; me = pin = asking = null; orders = []; reports = []; sends = []; staff = []; options = []; issued = {};
   loaded = { o:false, r:false }; lastRaw = ""; lastSaved = null; confirmDel = null;
   store("wo-me", null); store("wo-pin", null);
   wkSeq++; wkRows = []; wkForm = null; wkState = "idle"; wkKind = "day"; wkDay = null; staffTab = "orders"; adminTab = "list";
@@ -302,11 +305,51 @@ function dataNote(){
   if (slow && !(loaded.o && loaded.r)) return `<div class="banner">저장된 지시를 아직 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.</div>`;
   return "";
 }
+/* ---------- 이사님 멘트 ---------- */
+const FB_MARKS = ["확인", "보완 필요", "다시 하기"];
+let fbEdit = null; // { k, m, t } 지금 쓰는 멘트
+function fbHTML(k, fb, who, up){
+  const boss = me === BOSS;
+  if (!boss && (!fb || who !== me)) return "";
+  if (boss && fbEdit?.k === k){
+    const marks = k[0] === "o" ? FB_MARKS : FB_MARKS.slice(0, 2);
+    return `<div class="fbwrap panel stack" data-fbform style="padding:12px;gap:10px"><div class="chips">${marks.map(m => `<label class="chip"><input type="radio" name="fbm" value="${m}" ${fbEdit.m === m ? "checked" : ""}><span>${m}</span></label>`).join("")}</div>
+      <input type="text" data-fbt maxlength="200" placeholder="한 줄 멘트 (선택)" aria-label="한 줄 멘트" value="${esc(fbEdit.t)}">
+      <div class="row"><button type="button" class="primary" data-fbsave>멘트 저장</button><button type="button" class="ghost" data-fbno>취소</button>${fb ? `<button type="button" class="ghost" data-fbdel>멘트 지우기</button>` : ""}</div></div>`;
+  }
+  return `<div class="fbwrap">${fb ? `<div class="fb fb-${FB_MARKS.indexOf(fb.m) + 1}"><b>이사님 멘트 · ${esc(fb.m)}</b>${fb.t ? `<div>${esc(fb.t)}</div>` : ""}<div class="muted small">${fmtTime(fb.at)}${up > fb.at ? " · 보고를 고치기 전에 받은 멘트" : ""}</div></div>` : ""}${boss ? `<button type="button" data-fb="${esc(k)}"${fb ? ' style="margin-top:6px"' : ""}>${fb ? "멘트 고치기" : "멘트 달기"}</button>` : ""}</div>`;
+}
+const fbFind = k => { const [t, a, b, c] = k.split("|"); return t === "o" ? reports.find(x => x.id === a) : wkRows.find(x => x.person === a && x.kind === b && x.day === c); };
+const fbDraw = () => adminTab === "work" ? wkDraw() : render();
+document.addEventListener("input", e => {
+  if (!fbEdit) return;
+  if (e.target.name === "fbm") fbEdit.m = e.target.value;
+  if (e.target.matches?.("[data-fbt]")) fbEdit.t = e.target.value;
+});
+document.addEventListener("click", async e => {
+  const b = e.target.closest?.("[data-fb],[data-fbno],[data-fbsave],[data-fbdel]"); if (!b || me !== BOSS) return;
+  if (b.dataset.fb){ const fb = fbFind(b.dataset.fb)?.fb; fbEdit = { k: b.dataset.fb, m: fb?.m || "", t: fb?.t || "" }; return fbDraw(); }
+  if (!fbEdit) return;
+  if ("fbno" in b.dataset){ fbEdit = null; return fbDraw(); }
+  const del = "fbdel" in b.dataset, { k, m, t } = fbEdit, [type, a, c, d] = k.split("|"), row = fbFind(k);
+  if (!del && !m) return toast("확인·보완 필요 같은 표시를 먼저 고르세요.");
+  b.disabled = true;
+  try {
+    const x = await rpc("wo_feedback", { p_boss: pin, p_kind: type === "o" ? "order" : "work", p_key: type === "o" ? { id: a } : { person: a, kind: c, day: d }, p_mark: del ? "" : m, p_text: del ? "" : t });
+    if (x !== "ok") throw 0;
+    const fb = del ? null : { m, t: t.trim().replace(/\s+/g, " "), at: Date.now() };
+    if (row) row.fb = fb;
+    const now = fbFind(k); if (now) now.fb = fb;
+    if (fbEdit?.k === k) fbEdit = null;
+    toast(del ? "멘트를 지웠습니다." : "멘트를 저장했습니다. 직원 화면에 나타납니다.");
+    if (me === BOSS){ fbDraw(); refresh().catch(() => {}); }
+  } catch(err){ b.disabled = false; toast("저장하지 못했습니다. 인터넷 연결을 확인하고 다시 눌러 주세요."); }
+});
 function historyFor(id){ return reports.filter(r => r.orderId === id).sort((a,b) => b.at - a.at); }
 function histHTML(id){
   const hs = historyFor(id);
   if (!hs.length) return `<p class="muted small" style="margin:0">아직 보고가 없습니다.</p>`;
-  return `<ul class="hist">${hs.map(r => `<li><span class="pill s-${esc(r.status)}">${esc(r.status)}</span><span><b>${esc(r.name)}</b> ${esc(r.memo || "")}</span><span class="when">${fmtTime(r.at)}</span></li>`).join("")}</ul>`;
+  return `<ul class="hist">${hs.map(r => `<li><span class="pill s-${esc(r.status)}">${esc(r.status)}</span><span><b>${esc(r.name)}</b> ${esc(r.memo || "")}</span><span class="when">${fmtTime(r.at)}</span>${fbHTML("o|" + r.id, r.fb, r.name, r.at)}</li>`).join("")}</ul>`;
 }
 function detailHTML(o){
   return `<dl class="kv">
@@ -763,7 +806,7 @@ function wkBossHTML(){
   const rows = wkRows.filter(r => r.kind === wkKind), names = Object.keys(TEAM_OF), miss = names.filter(n => !rows.some(r => r.person === n));
   return `<div class="panel" style="padding:14px"><b>낸 사람 ${rows.length}명 · 안 낸 사람 ${miss.length}명</b>${miss.length ? `<div class="muted small">안 냄: ${miss.map(esc).join(", ")}</div>` : ""}</div>` +
     (rows.length ? names.flatMap(n => rows.filter(r => r.person === n)).map(r => `<details class="ticket" open><summary><span class="tt">${esc(r.person)} <span class="muted small">${esc(TEAM_OF[r.person])}</span></span><span class="small muted">${fmtTime(r.up)}${r.edited ? " 고침" : ""}</span></summary>
-      <div class="body">${wkView(r)}<div class="row"><button type="button" data-wkcopy="${esc(r.person)}">글 복사</button></div></div></details>`).join("") : `<div class="empty">아직 낸 보고가 없습니다.</div>`);
+      <div class="body">${wkView(r)}${fbHTML(`w|${r.person}|${r.kind}|${r.day}`, r.fb, r.person, r.up)}<div class="row"><button type="button" data-wkcopy="${esc(r.person)}">글 복사</button></div></div></details>`).join("") : `<div class="empty">아직 낸 보고가 없습니다.</div>`);
 }
 function wkBossBind(root){
   root.querySelectorAll("[data-wkcopy]").forEach(b => b.onclick = () => copyText(wkText(wkRows.find(r => r.kind === wkKind && r.person === b.dataset.wkcopy))));
@@ -780,7 +823,7 @@ const wkQty = (q, i) => `<div class="panel stack" style="padding:12px;gap:10px" 
 function wkStaffHTML(){
   wkForm = wkForm || wkInit();
   const { body: b, from } = wkForm, saved = wkRows.find(r => r.kind === wkKind && r.person === me), day = wkKind === "day";
-  let h = `<div class="small ${from === "draft" ? "banner" : "muted"}">${from === "draft" ? "쓰던 글입니다. 아직 내지 않았습니다." : saved ? `냈습니다 · ${fmtTime(saved.up)} (고쳐서 다시 낼 수 있습니다)` : from === "auto" ? "그동안 낸 보고를 모아 초안을 만들었습니다. 고쳐서 내세요." : "쓸 내용이 있는 칸만 적으면 됩니다."}${!saved ? "" : from === "draft" ? ` <span>지난번 낸 때: ${fmtTime(saved.up)}</span>` : ""}</div><form id="wkf" class="stack">`;
+  let h = `<div class="small ${from === "draft" ? "banner" : "muted"}">${from === "draft" ? "쓰던 글입니다. 아직 내지 않았습니다." : saved ? `냈습니다 · ${fmtTime(saved.up)} (고쳐서 다시 낼 수 있습니다)` : from === "auto" ? "그동안 낸 보고를 모아 초안을 만들었습니다. 고쳐서 내세요." : "쓸 내용이 있는 칸만 적으면 됩니다."}${!saved ? "" : from === "draft" ? ` <span>지난번 낸 때: ${fmtTime(saved.up)}</span>` : ""}</div>${saved ? fbHTML(`w|${me}|${wkKind}|${saved.day}`, saved.fb, me, saved.up) : ""}<form id="wkf" class="stack">`;
   if (day && me === "배성대") h += `<div class="field"><span class="lab">인원</span><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">${WK_PEOPLE.map(k => `<label class="small">${k}<input type="text" inputmode="numeric" maxlength="4" data-n="${k}" value="${esc(b.n[k])}"></label>`).join("")}</div></div>`;
   for (const [k, l, hint] of wkFields(me, wkKind)){
     h += `<div class="field"><label for="wk-${k}">${l}${hint ? ` <span class="hint">${hint}</span>` : ""}</label><textarea id="wk-${k}" data-f="${k}" maxlength="4000" rows="${Math.min(14, Math.max(3, String(b.f[k] ?? "").split("\n").length + 1))}">${esc(b.f[k])}</textarea></div>`;
@@ -831,6 +874,7 @@ function rerenderData(){
   if (me === BOSS && adminTab === "new"){ const t = document.getElementById("tab-list"); if (t) t.textContent = `지시 목록 (${orders.length})`; return; }
   if (me === BOSS && adminTab === "routine" && rtForm) return; // 루틴 쓰는 중
   if (me && (me === BOSS ? adminTab : staffTab) === "work") return; // 업무보고 보는 중·쓰는 중
+  if (document.querySelector("[data-fbform]")) return; // 멘트 쓰는 중
   // keep a half-typed report memo
   const active = document.activeElement; if (active && active.id?.startsWith("memo-") && active.value) return;
   if (document.querySelector('input[name^="st-"]:checked')) return;
