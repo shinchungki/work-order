@@ -127,7 +127,7 @@ async function rpc(fn, args){
 }
 let sends = [];
 const SEND_LABEL = { pending: "카톡 대기", sending: "카톡 보내는 중", sent: "카톡 보냄", failed: "카톡 실패" };
-const sendLine = id => sends.filter(x => x.order_id === id).map(x => `${esc(x.person)}: ${SEND_LABEL[x.state]}${x.note ? " (" + esc(x.note) + ")" : ""}`).join(" · ");
+const sendLine = id => sends.filter(x => x.order_id === id).map(x => `${x.kind === "before" ? "전날 알림 " : x.kind === "day" ? "당일 알림 " : ""}${esc(x.person)}: ${SEND_LABEL[x.state]}${x.note ? " (" + esc(x.note) + ")" : ""}`).join(" · ");
 // 지시와 보고를 다시 불러온다. 바뀐 것이 있을 때만 화면을 다시 그린다.
 let lastRaw = "", loadSeq = 0;
 async function refresh(redraw = true){
@@ -137,7 +137,7 @@ async function refresh(redraw = true){
   if (seq !== loadSeq) return;
   if (j.r === "locked") throw new Error("locked");
   if (j.r !== "ok"){ const who = me; logout(); pickPin(who, "비밀번호가 바뀌었습니다. 다시 넣어 주세요."); return; }
-  const os = j.orders, rs = j.reports, ss = j.sends; staff = j.staff || [];
+  const os = j.orders, rs = j.reports, ss = j.sends; staff = j.staff || []; options = j.options || [];
   const first = !loaded.o, raw = JSON.stringify([os, rs, ss, staff]);
   loaded.o = loaded.r = true; slow = false;
   if (raw === lastRaw && !first) return;
@@ -160,7 +160,7 @@ const COOPS = ["다른 팀과 협조 필요","작업 전 지시자와 상의","�
 const MUSTS = ["비용 발생 시 사전승인","중간보고","완료보고"];
 const STATUSES = ["접수","진행중","완료","문제발생"];
 
-let me = null, pin = null, asking = null, staff = [], issued = {}, orders = [], reports = [], loaded = {o:false,r:false}, slow = false;
+let me = null, pin = null, asking = null, staff = [], options = [], issued = {}, orders = [], reports = [], loaded = {o:false,r:false}, slow = false;
 let adminTab = "list", filter = "전체", openId = null, lastSaved = null, confirmDel = null;
 
 const $ = s => document.querySelector(s);
@@ -225,7 +225,7 @@ function renderPick(){
 /* ---------- password ---------- */
 const PIN_MSG = { bad: "비밀번호가 맞지 않습니다.", locked: "여러 번 틀려 잠겼습니다. 10분 뒤 다시 하세요.", length: "숫자 6~12자리로 정해 주세요.", same: "받은 번호와 다른 번호로 정해 주세요." };
 function logout(){
-  loadSeq++; me = pin = asking = null; orders = []; reports = []; sends = []; staff = []; issued = {};
+  loadSeq++; me = pin = asking = null; orders = []; reports = []; sends = []; staff = []; options = []; issued = {};
   loaded = { o:false, r:false }; lastRaw = ""; lastSaved = null; confirmDel = null;
   store("wo-me", null); store("wo-pin", null);
 }
@@ -422,11 +422,49 @@ const chipGroup = (name, opts, type, checked=[]) => `<div class="chips">${opts.m
   const v = typeof o === "string" ? o : o.v, l = typeof o === "string" ? o : o.label;
   return `<label class="chip"><input type="${type}" name="${name}" id="${name}-${i}" value="${esc(v)}" ${checked.includes(v)?"checked":""}><span>${esc(l)}</span></label>`; }).join("")}</div>`;
 
+// 기타: 이사님이 직접 만든 항목. 저장해 두고 다음에도 고를 수 있다
+const BASE = { type: TYPES, purpose: PURPOSES, coop: COOPS, must: MUSTS };
+const ownList = k => options.filter(x => x.kind === k).map(x => x.label).filter(l => !BASE[k].includes(l));
+const ownGroup = (k, base, type, checked) => `<div data-own="${k}" data-type="${type}">${chipGroup(k, [...base, ...ownList(k)], type, checked)}<div class="row" style="margin-top:8px;gap:8px"><button type="button" class="ghost small" data-ownadd>+ 기타 만들기</button></div></div>`;
+function bindOwn(box){
+  const k = box.dataset.own, type = box.dataset.type;
+  const redraw = pick => {
+    const on = [...box.querySelectorAll(`input[name=${k}]:checked`)].map(i => i.value).filter(v => type !== "radio" || !pick);
+    if (pick) on.push(pick);
+    box.outerHTML = ownGroup(k, BASE[k], type, on); bindOwn(document.querySelector(`[data-own="${k}"]`));
+  };
+  box.querySelector("[data-ownadd]").onclick = () => {
+    const row = box.lastElementChild, mine = ownList(k);
+    row.style.flexWrap = "wrap";
+    row.innerHTML = `<input type="text" maxlength="20" aria-label="새 항목 이름" placeholder="새 항목 이름(20자까지)" style="flex:1;min-width:160px"><button type="button" data-ok>추가</button><button type="button" class="ghost" data-no>닫기</button>
+      ${mine.length ? `<div class="row" style="width:100%;gap:8px;flex-wrap:wrap"><span class="muted small">만든 항목 지우기</span>${mine.map(l => `<button type="button" class="ghost small" data-rm="${esc(l)}">${esc(l)} ✕</button>`).join("")}</div>` : ""}`;
+    const inp = row.querySelector("input"); inp.focus();
+    const send = async (label, add, b) => {
+      b.disabled = true;
+      try {
+        const a = await rpc("wo_option", { p_boss: pin, p_kind: k, p_label: label, p_add: add });
+        if (a !== "ok"){ toast(a === "full" ? "30개까지만 만들 수 있습니다." : "저장하지 못했습니다."); b.disabled = false; return; }
+        options = options.filter(x => !(x.kind === k && x.label === label)); if (add) options.push({ kind: k, label });
+        redraw(add ? label : null);
+      } catch(e){ toast("저장하지 못했습니다. 인터넷을 확인하세요."); b.disabled = false; }
+    };
+    const add = () => {
+      const l = inp.value.trim().replace(/\s+/g, " "); if (!l) return inp.focus();
+      if (BASE[k].includes(l) || mine.includes(l)) return redraw(l);
+      send(l, true, row.querySelector("[data-ok]"));
+    };
+    row.querySelector("[data-ok]").onclick = add;
+    inp.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); if (!e.isComposing) add(); } };
+    row.querySelector("[data-no]").onclick = () => redraw(null);
+    row.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => send(b.dataset.rm, false, b));
+  };
+}
+
 function renderForm(){
   if (lastSaved){
     const o = lastSaved;
     $("#pane").innerHTML = `<div class="stack"><div class="panel stack">
-      <div><h2>지시를 저장했습니다</h2><p class="muted small" style="margin:4px 0 0">맥북이 켜져 있으면 카톡이 자동으로 나갑니다. 안 나가면 아래 글을 복사해 보내세요.</p></div>
+      <div><h2>지시를 저장했습니다</h2><p class="muted small" style="margin:4px 0 0">맥북이 켜져 있으면 카톡이 자동으로 나갑니다. 기한 전날 17시와 당일 8시에도 완료하지 않은 사람에게 알림이 갑니다. 안 나가면 아래 글을 복사해 보내세요.</p></div>
       <div class="copybox" id="copybox">${esc(kakaoText(o))}</div>
       <div class="row"><button class="primary" id="copy">글과 링크 복사</button><button id="again">새 지시 또 쓰기</button><button class="ghost" id="tolist">지시 목록 보기</button></div>
     </div></div>`;
@@ -442,20 +480,21 @@ function renderForm(){
       <div class="field" id="people-field"><span class="lab">받는 사람 <span class="hint">여러 명 고를 수 있습니다</span></span><div id="people" class="stack" style="gap:10px"><p class="muted small" style="margin:0">먼저 팀을 고르세요.</p></div></div>
     </div>
     <div class="panel stack">
-      <div class="field"><span class="lab">업무 유형</span>${chipGroup("type", TYPES, "radio")}</div>
+      <div class="field"><span class="lab">업무 유형</span>${ownGroup("type", TYPES, "radio")}</div>
       <div class="field"><label for="title">업무 제목</label><input type="text" id="title" maxlength="60" placeholder="예: 내일 납품분 불고기 200인분 조리"></div>
       <div class="field"><span class="lab">기한</span>${chipGroup("due", due, "radio", ["today"])}<input type="date" id="dueDate" hidden></div>
       <div class="field"><span class="lab">우선순위</span>${chipGroup("prio", PRIOS, "radio", ["보통"])}</div>
     </div>
     <div class="panel stack">
-      <div class="field"><span class="lab">목적·이유 <span class="hint">여러 개 가능</span></span>${chipGroup("purpose", PURPOSES, "checkbox")}</div>
-      <div class="field"><span class="lab">협조·참고사항 <span class="hint">여러 개 가능</span></span>${chipGroup("coop", COOPS, "checkbox")}</div>
-      <div class="field"><span class="lab">꼭 지킬 것</span>${chipGroup("must", MUSTS, "checkbox", ["완료보고"])}</div>
+      <div class="field"><span class="lab">목적·이유 <span class="hint">여러 개 가능</span></span>${ownGroup("purpose", PURPOSES, "checkbox")}</div>
+      <div class="field"><span class="lab">협조·참고사항 <span class="hint">여러 개 가능</span></span>${ownGroup("coop", COOPS, "checkbox")}</div>
+      <div class="field"><span class="lab">꼭 지킬 것</span>${ownGroup("must", MUSTS, "checkbox", ["완료보고"])}</div>
       <div class="field"><label for="memo">짧은 메모 <span class="hint">선택</span></label><textarea id="memo" maxlength="200" placeholder="예: 냉장 3번 칸 재료 먼저 사용"></textarea></div>
     </div>
     <div class="row"><button class="primary" type="submit" id="save">저장하고 카톡 보내기</button><span class="muted small" id="err"></span></div>
   </form>`;
   const f = $("#f");
+  f.querySelectorAll("[data-own]").forEach(bindOwn);
   const drawPeople = () => {
     const prev = new Set([...f.querySelectorAll("input[name=person]:checked")].map(i => i.value));
     const teams = [...f.querySelectorAll("input[name=team]:checked")].map(i => i.value);
