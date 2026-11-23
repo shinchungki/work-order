@@ -240,6 +240,8 @@ function logout(){
   loadSeq++; me = pin = asking = null; orders = []; reports = []; sends = []; staff = []; options = []; issued = {};
   loaded = { o:false, r:false }; lastRaw = ""; lastSaved = null; confirmDel = null;
   store("wo-me", null); store("wo-pin", null);
+  wkSeq++; wkRows = []; wkForm = null; wkState = "idle"; wkKind = "day"; wkDay = null; staffTab = "orders"; adminTab = "list";
+  try { Object.keys(localStorage).filter(k => k.startsWith("wo-draft-")).forEach(k => localStorage.removeItem(k)); } catch(e){}   // 다른 사람이 쓰던 글을 못 보게
 }
 function enter(name, p){
   me = name; pin = p; asking = null; store("wo-me", me); store("wo-pin", pin);
@@ -331,10 +333,13 @@ function bindDetails(root){
 
 /* ---------- employee ---------- */
 function renderStaff(){
+  if (staffTab === "work"){
+    $("#app").innerHTML = STAFF_TABS() + `<div id="pane"></div>`; bindStaffTabs(); return wkOpen($("#pane"));
+  }
   const mine = orders.filter(o => o.assignees.includes(me))
     .sort((a,b) => ((a.statusBy?.[me]==="완료") - (b.statusBy?.[me]==="완료")) || b.createdAt - a.createdAt);
   const todo = mine.filter(o => o.statusBy?.[me] !== "완료").length;
-  let h = `<div class="stack">${dataNote()}<div><h2>내 지시</h2><p class="muted small" style="margin:4px 0 0">${mine.length ? `받은 지시 ${mine.length}건 · 아직 완료 안 한 것 ${todo}건` : ""}</p></div>`;
+  let h = STAFF_TABS() + `<div class="stack">${dataNote()}<div><h2>내 지시</h2><p class="muted small" style="margin:4px 0 0">${mine.length ? `받은 지시 ${mine.length}건 · 아직 완료 안 한 것 ${todo}건` : ""}</p></div>`;
   if (!mine.length) h += `<div class="empty">${loaded.o ? "받은 지시가 없습니다. 새 지시가 오면 여기에 나타납니다." : "불러오는 중입니다…"}</div>`;
   for (const o of mine){
     const myst = o.statusBy?.[me] || "대기";
@@ -353,6 +358,7 @@ function renderStaff(){
   }
   h += `</div>`;
   $("#app").innerHTML = h;
+  bindStaffTabs();
   bindDetails($("#app"));
   $("#app").querySelectorAll("[data-report]").forEach(b => b.onclick = () => sendReport(b.dataset.report, b));
 }
@@ -370,6 +376,12 @@ async function sendReport(id, btn){
   } catch(e){ toast("보고를 저장하지 못했습니다. 인터넷 연결을 확인하고 다시 눌러 주세요."); btn.disabled = false; }
 }
 
+const STAFF_TABS = () => `<div class="tabs" role="tablist"><button role="tab" id="stab-orders" aria-selected="${staffTab==="orders"}">내 지시</button><button role="tab" id="stab-work" aria-selected="${staffTab==="work"}">업무보고</button></div>`;
+function bindStaffTabs(){
+  $("#stab-orders").onclick = () => { staffTab = "orders"; render(); };
+  $("#stab-work").onclick = () => { staffTab = "work"; wkState = "idle"; wkKind = "day"; wkDay = null; render(); };
+}
+
 /* ---------- admin ---------- */
 function renderAdmin(){
   let h = `<div class="tabs" role="tablist">
@@ -377,6 +389,7 @@ function renderAdmin(){
     <button role="tab" id="tab-list" aria-selected="${adminTab==="list"}">지시 목록 ${orders.length ? `(${orders.length})` : ""}</button>
     <button role="tab" id="tab-routine" aria-selected="${adminTab==="routine"}">루틴업무</button>
     <button role="tab" id="tab-board" aria-selected="${adminTab==="board"}">현황판</button>
+    <button role="tab" id="tab-work" aria-selected="${adminTab==="work"}">업무보고</button>
     <button role="tab" id="tab-pins" aria-selected="${adminTab==="pins"}">직원 비밀번호</button></div>`;
   h += `<div id="pane"></div>`;
   $("#app").innerHTML = h;
@@ -384,8 +397,9 @@ function renderAdmin(){
   $("#tab-list").onclick = () => { adminTab = "list"; issued = {}; render(); };
   $("#tab-routine").onclick = () => { adminTab = "routine"; rtForm = false; rtDel = null; issued = {}; render(); };
   $("#tab-board").onclick = () => { adminTab = "board"; boardM = boardDay = null; issued = {}; render(); };
+  $("#tab-work").onclick = () => { adminTab = "work"; wkState = "idle"; wkKind = "day"; wkDay = null; issued = {}; render(); };
   $("#tab-pins").onclick = () => { adminTab = "pins"; render(); };
-  if (adminTab === "new") renderForm(); else if (adminTab === "routine") rtForm ? renderForm(true) : renderRoutines(); else if (adminTab === "board") renderBoard(); else if (adminTab === "pins") renderPins(); else renderList();
+  if (adminTab === "work") wkOpen($("#pane")); else if (adminTab === "new") renderForm(); else if (adminTab === "routine") rtForm ? renderForm(true) : renderRoutines(); else if (adminTab === "board") renderBoard(); else if (adminTab === "pins") renderPins(); else renderList();
 }
 
 function renderList(){
@@ -617,6 +631,177 @@ function renderBoard(){
   $("#pane").querySelectorAll("[data-day]").forEach(b => b.onclick = () => { boardDay = boardDay === b.dataset.day ? null : b.dataset.day; render(); });
 }
 
+/* ---------- 업무보고(일·주·월) ---------- */
+const WK_KIND = { day: "일일", week: "주간", month: "월간" };
+const WK_TEAMS = ["전처리", "조리", "포장", "구매", "검수", "사무"];
+const WK_QTY = [["raw", "원물 중량(kg, 1박스)"], ["price", "박스 매입가(원)"], ["work", "실제 작업량(kg)"], ["out", "최종 생산량(kg)"]];
+const WK_PEOPLE = ["총원", "풀타임", "하프", "옥상"];
+function wkFields(name, kind){
+  const N = { day: ["오늘 한 일", "내일 할 일"], week: ["이번 주 한 일", "다음 주 할 일"], month: ["이번 달 한 일", "다음 달 할 일"] }[kind];
+  const X = { "최규수": [["safe", "안전·위생·시설"], ["teams", "팀별 보고"]], "배성대": [["sum", "작업량·원가 합계"], ["talk", "개인 면담", "이사님만 봅니다"]],
+    "박한설": [["vendor", "거래처·설비"], ["menu", "생산 메뉴"]], "허강현": [["store", "매장별 보고"]] }[name] || [];
+  return [["done", N[0]], ...X.filter(x => !(kind === "day" && (x[0] === "teams" || x[0] === "sum"))), ["doing", "진행 중 업무"], ["issue", "문제·요청"], ["next", N[1]]];
+}
+const wkDate = s => { const [y, m, d] = String(s).split("-").map(Number); return new Date(y, m-1, d); };
+const wkStart = (kind, d) => kind === "day" ? new Date(d.getFullYear(), d.getMonth(), d.getDate()) : kind === "week" ? new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7) : new Date(d.getFullYear(), d.getMonth(), 1);
+const wkMove = (kind, d, n) => kind === "day" ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + n) : kind === "week" ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7*n) : new Date(d.getFullYear(), d.getMonth() + n, 1);
+const wkEnd = (kind, d) => { const e = wkMove(kind, d, 1); e.setDate(e.getDate() - 1); return e; };
+const wkTitle = (kind, d) => kind === "day" ? md(d) : kind === "week" ? `${md(d)} ~ ${md(wkEnd(kind, d))}` : `${d.getFullYear()}년 ${d.getMonth()+1}월`;
+const wkNum = v => { const n = Number(String(v ?? "").replace(/[,\s]/g, "")); return String(v ?? "").trim() && isFinite(n) && n >= 0 ? n : null; };
+const wkWon = n => Math.round(n).toLocaleString("ko-KR");
+const wkKg = n => Number(n.toFixed(2)).toLocaleString("ko-KR");
+function wkCalc(q){
+  const raw = wkNum(q.raw), price = wkNum(q.price), work = wkNum(q.work), out = wkNum(q.out), r = {};
+  if (raw && price != null) r.unit = price / raw;
+  if (r.unit != null && work != null) r.cost = r.unit * work;
+  if (work && out != null){ r.up = out - work; r.times = out / work; }
+  if (r.cost != null && out) r.per = r.cost / out;
+  return r;
+}
+function wkCalcLines(q){
+  const r = wkCalc(q), L = [];
+  if (r.unit != null) L.push(`원물 kg당 단가: ${wkWon(r.unit)}원`);
+  if (r.cost != null) L.push(`실제 투입 원물비: ${wkWon(r.cost)}원`);
+  if (r.up != null) L.push(`중량 증가량: ${wkKg(r.up)}kg`, `중량 증가 배율: ${wkKg(r.times)}배`);
+  if (r.per != null) L.push(`생산품 kg당 원물 원가: ${wkWon(r.per)}원`);
+  return L;
+}
+// 보고 한 건을 글로 만든다. 빈 칸은 뺀다
+function wkSections(name, kind, b){
+  const f = b?.f || {}, S = [], t = v => String(v ?? "").trim();
+  if (kind === "day"){
+    const p = WK_PEOPLE.filter(k => t(b?.n?.[k])).map(k => `${k} ${t(b.n[k])}명`); if (p.length) S.push(["인원", p.join(" · ")]);
+  }
+  for (const [k, l] of wkFields(name, kind)){
+    if (t(f[k])) S.push([l, t(f[k])]);
+    if (k === "done" && kind === "day" && Array.isArray(b?.q)){
+      const a = b.q.filter(q => t(q?.name)).map(q => [`■ ${t(q.name)}`, ...WK_QTY.filter(x => t(q[x[0]])).map(x => { const m = x[1].match(/^(.*)\((kg|원)/), v = wkNum(q[x[0]]); return `- ${m[1]}: ${v == null ? t(q[x[0]]) : m[2] === "원" ? wkWon(v) : wkKg(v)}${m[2]}`; }), ...wkCalcLines(q).map(x => "- " + x), ...(t(q.memo) ? ["- " + t(q.memo)] : [])].join("\n"));
+      if (a.length) S.push(["작업량·원가", a.join("\n\n")]);
+    }
+    if (k === "safe" && kind === "day"){
+      const a = WK_TEAMS.filter(x => t(b?.t?.[x])).map(x => `[${x}] ${t(b.t[x])}`); if (a.length) S.push(["팀별 보고", a.join("\n")]);
+    }
+  }
+  return S;
+}
+const wkText = r => [`[${WK_KIND[r.kind]}보고] ${wkTitle(r.kind, wkDate(r.day))} ${r.person}`, ...wkSections(r.person, r.kind, r.body).map(([l, v]) => `\n▶ ${l}\n${v}`)].join("\n");
+// 주간은 일일을, 월간은 주간(없는 주는 일일)을 모아 초안을 만든다
+function wkAuto(kind){
+  const days = wkRows.filter(r => r.kind === "day" && r.person === me);
+  const weeks = kind === "month" ? wkRows.filter(r => r.kind === "week" && r.person === me) : [];
+  const src = [...weeks, ...days.filter(r => !weeks.some(w => w.day === ymd(wkStart("week", wkDate(r.day)))))].sort((a, b) => a.day < b.day ? -1 : 1);
+  const f = {};
+  for (const [k] of wkFields(me, kind)){
+    const L = [];
+    for (const r of src){
+      let v = String(r.body?.f?.[k] ?? "").trim();
+      if (k === "teams" && r.kind === "day") v = WK_TEAMS.filter(x => { const s = String(r.body?.t?.[x] ?? "").trim(); return s && s !== "이상없음"; }).map(x => `[${x}] ${r.body.t[x]}`).join("\n");
+      if (v) L.push(`${wkTitle(r.kind, wkDate(r.day))}\n${v}`);
+    }
+    f[k] = (k === "next" || k === "doing" ? L.slice(-1) : L).join("\n\n");
+  }
+  if (me === "배성대"){
+    const m = new Map();
+    for (const r of days) for (const q of Array.isArray(r.body?.q) ? r.body.q : []){
+      const n = String(q?.name ?? "").trim(); if (!n) continue;
+      const o = m.get(n) || { work: 0, out: 0, cost: 0, all: true }, c = wkCalc(q).cost;
+      o.work += wkNum(q.work) || 0; o.out += wkNum(q.out) || 0; if (c == null) o.all = false; else o.cost += c;
+      m.set(n, o);
+    }
+    f.sum = [...m].map(([n, o]) => `${n}: 작업량 ${wkKg(o.work)}kg, 생산량 ${wkKg(o.out)}kg` + (o.cost ? `, 투입 원물비 ${wkWon(o.cost)}원${o.all ? (o.out ? ` (kg당 ${wkWon(o.cost / o.out)}원)` : "") : " (가격 적은 날만)"}` : "")).join("\n");
+  }
+  return { f, n: {}, t: {}, q: [] };
+}
+let staffTab = "orders", wkKind = "day", wkDay = null, wkRows = [], wkState = "idle", wkSeq = 0, wkForm = null;
+const wkKey = () => `wo-draft-${me}-${wkKind}-${ymd(wkDay)}`;
+async function wkLoad(){
+  const seq = ++wkSeq, who = me;
+  if (!wkDay) wkDay = wkStart(wkKind, new Date());
+  wkState = "loading"; wkForm = null; wkDraw();
+  // 월간은 첫 주가 전달에 걸칠 수 있다(그 주의 월요일은 전달 보고에 들어간다)
+  try {
+    const j = await rpc("wo_work_load", { p_name: me, p_pin: pin, p_from: ymd(wkDay), p_to: ymd(wkEnd(wkKind, wkDay)) });
+    if (seq !== wkSeq || who !== me) return;
+    if (j.r !== "ok") throw 0;
+    wkRows = j.rows; wkState = "ok";
+  } catch(e){ if (seq !== wkSeq || who !== me) return; wkRows = []; wkState = "fail"; }
+  wkDraw();
+}
+function wkDraw(){
+  const root = $("#wk"); if (!root) return;
+  const isBoss = me === BOSS, today = wkStart(wkKind, new Date());
+  let h = `<div class="stack"><div class="chips">${Object.entries(WK_KIND).map(([k, l]) => `<label class="chip"><input type="radio" name="wkkind" value="${k}" ${k === wkKind ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><button type="button" data-wkmv="-1" aria-label="이전">◀</button><h2 style="text-align:center;font-size:19px">${wkTitle(wkKind, wkDay)}</h2><button type="button" data-wkmv="1" aria-label="다음" ${wkDay >= today ? "disabled" : ""}>▶</button></div>`;
+  if (wkState === "loading") h += `<div class="empty">불러오는 중입니다…</div>`;
+  else if (wkState === "fail") h += `<div class="banner">보고를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.</div><button type="button" id="wkretry">다시 불러오기</button>`;
+  else h += isBoss ? wkBossHTML() : wkStaffHTML();
+  root.innerHTML = h + `</div>`;
+  root.querySelectorAll("[name=wkkind]").forEach(i => i.onchange = () => { wkKind = i.value; wkDay = wkStart(wkKind, new Date()); wkLoad(); });
+  root.querySelectorAll("[data-wkmv]").forEach(b => b.onclick = () => { wkDay = wkMove(wkKind, wkDay, Number(b.dataset.wkmv)); wkLoad(); });
+  const rt = $("#wkretry"); if (rt) rt.onclick = wkLoad;
+  if (wkState === "ok") isBoss ? wkBossBind(root) : wkStaffBind(root);
+}
+const wkView = r => wkSections(r.person, r.kind, r.body).map(([l, v]) => `<div><b style="color:var(--accent)">▶ ${esc(l)}</b><div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(v)}</div></div>`).join("") || `<div class="muted">적은 내용이 없습니다.</div>`;
+function wkBossHTML(){
+  const rows = wkRows.filter(r => r.kind === wkKind), names = Object.keys(TEAM_OF), miss = names.filter(n => !rows.some(r => r.person === n));
+  return `<div class="panel" style="padding:14px"><b>낸 사람 ${rows.length}명 · 안 낸 사람 ${miss.length}명</b>${miss.length ? `<div class="muted small">안 냄: ${miss.map(esc).join(", ")}</div>` : ""}</div>` +
+    (rows.length ? names.flatMap(n => rows.filter(r => r.person === n)).map(r => `<details class="ticket" open><summary><span class="tt">${esc(r.person)} <span class="muted small">${esc(TEAM_OF[r.person])}</span></span><span class="small muted">${fmtTime(r.up)}${r.edited ? " 고침" : ""}</span></summary>
+      <div class="body">${wkView(r)}<div class="row"><button type="button" data-wkcopy="${esc(r.person)}">글 복사</button></div></div></details>`).join("") : `<div class="empty">아직 낸 보고가 없습니다.</div>`);
+}
+function wkBossBind(root){
+  root.querySelectorAll("[data-wkcopy]").forEach(b => b.onclick = () => copyText(wkText(wkRows.find(r => r.kind === wkKind && r.person === b.dataset.wkcopy))));
+}
+function wkInit(){
+  const saved = wkRows.find(r => r.kind === wkKind && r.person === me);
+  let d = null; try { d = JSON.parse(load(wkKey())); } catch(e){}
+  const b = d || saved?.body || (wkKind === "day" ? {} : wkAuto(wkKind));
+  return { from: d ? "draft" : saved ? "saved" : wkKind === "day" ? "new" : "auto", body: JSON.parse(JSON.stringify({ f: b.f || {}, n: b.n || {}, t: b.t || {}, q: Array.isArray(b.q) ? b.q : [] })) };
+}
+const wkQty = (q, i) => `<div class="panel stack" style="padding:12px;gap:10px" data-q="${i}"><div class="row" style="flex-wrap:nowrap"><input type="text" data-qk="name" maxlength="40" placeholder="품목 (예: 목이버섯)" aria-label="품목" value="${esc(q.name)}"><button type="button" class="ghost" data-qdel="${i}" style="flex:none">빼기</button></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end">${WK_QTY.map(([k, l]) => `<label class="small">${l}<input type="text" inputmode="decimal" data-qk="${k}" maxlength="15" value="${esc(q[k])}"></label>`).join("")}</div>
+  <input type="text" data-qk="memo" maxlength="80" placeholder="메모 (예: 45팩, 2kg)" aria-label="메모" value="${esc(q.memo)}"><div class="small" data-qout style="white-space:pre-line">${esc(wkCalcLines(q).join("\n"))}</div></div>`;
+function wkStaffHTML(){
+  wkForm = wkForm || wkInit();
+  const { body: b, from } = wkForm, saved = wkRows.find(r => r.kind === wkKind && r.person === me), day = wkKind === "day";
+  let h = `<div class="small ${from === "draft" ? "banner" : "muted"}">${from === "draft" ? "쓰던 글입니다. 아직 내지 않았습니다." : saved ? `냈습니다 · ${fmtTime(saved.up)} (고쳐서 다시 낼 수 있습니다)` : from === "auto" ? "그동안 낸 보고를 모아 초안을 만들었습니다. 고쳐서 내세요." : "쓸 내용이 있는 칸만 적으면 됩니다."}${!saved ? "" : from === "draft" ? ` <span>지난번 낸 때: ${fmtTime(saved.up)}</span>` : ""}</div><form id="wkf" class="stack">`;
+  if (day && me === "배성대") h += `<div class="field"><span class="lab">인원</span><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">${WK_PEOPLE.map(k => `<label class="small">${k}<input type="text" inputmode="numeric" maxlength="4" data-n="${k}" value="${esc(b.n[k])}"></label>`).join("")}</div></div>`;
+  for (const [k, l, hint] of wkFields(me, wkKind)){
+    h += `<div class="field"><label for="wk-${k}">${l}${hint ? ` <span class="hint">${hint}</span>` : ""}</label><textarea id="wk-${k}" data-f="${k}" maxlength="4000" rows="${Math.min(14, Math.max(3, String(b.f[k] ?? "").split("\n").length + 1))}">${esc(b.f[k])}</textarea></div>`;
+    if (k === "done" && day && me === "배성대") h += `<div class="field"><span class="lab">작업량·원가 <span class="hint">나머지는 자동 계산</span></span>${b.q.map(wkQty).join("")}<button type="button" id="wkqadd" ${b.q.length >= 20 ? "disabled" : ""}>+ 품목 더하기</button></div>`;
+    if (k === "safe" && day) h += `<div class="field"><span class="lab">팀별 보고</span><button type="button" id="wkok">빈 칸에 모두 '이상없음' 넣기</button>${WK_TEAMS.map(x => `<label class="small">${x}<input type="text" data-t="${x}" maxlength="500" value="${esc(b.t[x])}"></label>`).join("")}</div>`;
+  }
+  return h + `<button type="submit" class="primary">${saved ? "고쳐서 다시 내기" : `${WK_KIND[wkKind]}보고 내기`}</button>${!day && wkForm.from !== "auto" ? `<button type="button" id="wkauto">낸 보고로 초안 다시 만들기</button>` : ""}${from === "draft" ? `<button type="button" id="wkdrop">쓰던 글 버리기</button>` : ""}</form>`;
+}
+function wkStaffBind(root){
+  const b = wkForm.body, key = wkKey(), keep = () => { wkForm.touched = true; store(key, JSON.stringify(b)); };
+  root.querySelectorAll("[data-f]").forEach(x => x.oninput = () => { b.f[x.dataset.f] = x.value; keep(); });
+  root.querySelectorAll("[data-n]").forEach(x => x.oninput = () => { b.n[x.dataset.n] = x.value; keep(); });
+  root.querySelectorAll("[data-t]").forEach(x => x.oninput = () => { b.t[x.dataset.t] = x.value; keep(); });
+  root.querySelectorAll("[data-qk]").forEach(x => x.oninput = () => { const p = x.closest("[data-q]"), q = b.q[p.dataset.q]; q[x.dataset.qk] = x.value; p.querySelector("[data-qout]").textContent = wkCalcLines(q).join("\n"); keep(); });
+  root.querySelectorAll("[data-qdel]").forEach(x => x.onclick = () => { b.q.splice(Number(x.dataset.qdel), 1); keep(); wkDraw(); });
+  const on = (id, fn) => { const x = root.querySelector(id); if (x) x.onclick = fn; };
+  on("#wkqadd", () => { b.q.push({}); keep(); wkDraw(); });
+  on("#wkok", () => { WK_TEAMS.forEach(x => { if (!String(b.t[x] ?? "").trim()) b.t[x] = "이상없음"; }); keep(); wkDraw(); });
+  on("#wkauto", () => { wkForm = { from: "auto", body: wkAuto(wkKind) }; store(key, JSON.stringify(wkForm.body)); wkDraw(); });
+  on("#wkdrop", () => { store(key, null); wkForm = null; wkDraw(); });
+  root.querySelector("#wkf").onsubmit = async e => {
+    e.preventDefault();
+    if (!wkSections(me, wkKind, b).length) return toast("한 칸 이상 적어 주세요.");
+    if (b.q.some(q => !String(q.name ?? "").trim() && Object.values(q).some(v => String(v ?? "").trim()))) return toast("작업량·원가에 품목 이름을 적어 주세요.");
+    const btn = e.target.querySelector("[type=submit]"), seq = wkSeq, who = me; btn.disabled = true;
+    const sent = JSON.stringify(b);
+    try {
+      const r = await rpc("wo_work_save", { p_name: me, p_pin: pin, p_kind: wkKind, p_day: ymd(wkDay), p_body: JSON.parse(sent) });
+      if (r === "invalid"){ btn.disabled = false; return toast("저장할 수 없습니다. 두 달이 지났거나 글이 너무 깁니다."); }
+      if (r !== "ok") throw 0;
+      if (load(key) === sent || !wkForm?.touched) store(key, null);   // 보내는 사이 더 쓴 글은 남긴다
+      toast("보고를 냈습니다.");
+      if (seq === wkSeq && who === me) { scrollTo(0, 0); wkLoad(); }
+    } catch(err){ btn.disabled = false; toast("보고를 저장하지 못했습니다. 쓰던 글은 남아 있습니다. 다시 눌러 주세요."); }
+  };
+}
+function wkOpen(root){ root.innerHTML = `<div id="wk"></div>`; if (wkState === "idle") wkLoad(); else wkDraw(); }
+
 /* ---------- main ---------- */
 function render(){
   renderWho();
@@ -628,13 +813,14 @@ function rerenderData(){
   // keep the form intact while the boss is typing
   if (me === BOSS && adminTab === "new"){ const t = document.getElementById("tab-list"); if (t) t.textContent = `지시 목록 (${orders.length})`; return; }
   if (me === BOSS && adminTab === "routine" && rtForm) return; // 루틴 쓰는 중
+  if (me && (me === BOSS ? adminTab : staffTab) === "work") return; // 업무보고 보는 중·쓰는 중
   // keep a half-typed report memo
   const active = document.activeElement; if (active && active.id?.startsWith("memo-") && active.value) return;
   if (document.querySelector('input[name^="st-"]:checked')) return;
   if (me) render();
 }
 
-function initHash(){ const h = location.hash.slice(1); if (h && /^o[a-z0-9]+$/.test(h)){ openId = h; adminTab = "list"; } }
+function initHash(){ const h = location.hash.slice(1); if (h && /^o[a-z0-9]+$/.test(h)){ openId = h; adminTab = "list"; staffTab = "orders"; } }
 window.addEventListener("hashchange", () => { initHash(); if (me) render(); });
 
 (async function start(){
