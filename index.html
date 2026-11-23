@@ -46,7 +46,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 button.ghost{border-color:transparent;background:transparent;color:var(--muted);padding:6px 10px;min-height:32px}
 button.danger{color:var(--bad);border-color:var(--bad)}
 button:disabled{opacity:.5;cursor:default}
-input[type=text],input[type=date],textarea{font:inherit;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+input[type=text],input[type=password],input[type=date],textarea{font:inherit;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
 textarea{min-height:64px;resize:vertical}
 .stack{display:flex;flex-direction:column;gap:16px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -120,25 +120,28 @@ dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
 const PAGE_URL = location.origin + location.pathname;
 const SB_URL = "https://rjtcbntsuboozreqycpp.supabase.co/rest/v1/";
 const SB_KEY = "sb_publishable__56a4xs6zX7yw05utEIc_A_0b7YW-QT"; // 공개용 키
-async function api(path, method = "GET", body){
-  const res = await fetch(SB_URL + path, { method, cache: "no-store",
-    headers: { apikey: SB_KEY, "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: body === undefined ? undefined : JSON.stringify(body) });
-  if (!res.ok) throw new Error(res.status + " " + await res.text());
-  return method === "GET" ? res.json() : null;
+async function rpc(fn, args){
+  const res = await fetch(SB_URL + "rpc/" + fn, { method: "POST", cache: "no-store", headers: { apikey: SB_KEY, "Content-Type": "application/json" }, body: JSON.stringify(args || {}) });
+  if (!res.ok) throw new Error(res.status);
+  return res.json();
 }
+let sends = [];
+const SEND_LABEL = { pending: "카톡 대기", sending: "카톡 보내는 중", sent: "카톡 보냄", failed: "카톡 실패" };
+const sendLine = id => sends.filter(x => x.order_id === id).map(x => `${esc(x.person)}: ${SEND_LABEL[x.state]}${x.note ? " (" + esc(x.note) + ")" : ""}`).join(" · ");
 // 지시와 보고를 다시 불러온다. 바뀐 것이 있을 때만 화면을 다시 그린다.
 let lastRaw = "", loadSeq = 0;
 async function refresh(redraw = true){
   const seq = ++loadSeq;
-  const [os, rs] = await Promise.all([
-    api("wo_orders?select=*&order=createdAt.desc&limit=500"),
-    api("wo_reports?select=*&order=at.desc&limit=1000")]);
+  if (!me || !pin) return;
+  const j = await rpc("wo_load", { p_name: me, p_pin: pin });
   if (seq !== loadSeq) return;
-  const first = !loaded.o, raw = JSON.stringify([os, rs]);
+  if (j.r === "locked") throw new Error("locked");
+  if (j.r !== "ok"){ const who = me; logout(); pickPin(who, "비밀번호가 바뀌었습니다. 다시 넣어 주세요."); return; }
+  const os = j.orders, rs = j.reports, ss = j.sends; staff = j.staff || [];
+  const first = !loaded.o, raw = JSON.stringify([os, rs, ss, staff]);
   loaded.o = loaded.r = true; slow = false;
   if (raw === lastRaw && !first) return;
-  lastRaw = raw; orders = os; reports = rs;
+  lastRaw = raw; orders = os; reports = rs; sends = ss;
   if (redraw) rerenderData();
 }
 const BOSS = "신충기 이사";
@@ -157,7 +160,7 @@ const COOPS = ["다른 팀과 협조 필요","작업 전 지시자와 상의","�
 const MUSTS = ["비용 발생 시 사전승인","중간보고","완료보고"];
 const STATUSES = ["접수","진행중","완료","문제발생"];
 
-let me = null, orders = [], reports = [], loaded = {o:false,r:false}, slow = false;
+let me = null, pin = null, asking = null, staff = [], issued = {}, orders = [], reports = [], loaded = {o:false,r:false}, slow = false;
 let adminTab = "list", filter = "전체", openId = null, lastSaved = null, confirmDel = null;
 
 const $ = s => document.querySelector(s);
@@ -204,7 +207,7 @@ function renderWho(){
   $("#who").innerHTML = me
     ? `<span><b>${esc(me)}</b>${me === BOSS ? ' <span class="muted small">지시자</span>' : ` <span class="muted small">${esc(TEAM_OF[me]||"")}</span>`}</span><button class="ghost" id="switch">이름 바꾸기</button>`
     : "";
-  const b = $("#switch"); if (b) b.onclick = () => { me = null; store("wo-me", null); render(); };
+  const b = $("#switch"); if (b) b.onclick = () => { logout(); render(); };
 }
 
 /* ---------- name select ---------- */
@@ -216,7 +219,68 @@ function renderPick(){
   }
   h += `</div>`;
   $("#app").innerHTML = h;
-  $("#app").querySelectorAll("[data-name]").forEach(b => b.onclick = () => { me = b.dataset.name; store("wo-me", me); render(); });
+  $("#app").querySelectorAll("[data-name]").forEach(b => b.onclick = () => pickPin(b.dataset.name));
+}
+
+/* ---------- password ---------- */
+const PIN_MSG = { bad: "비밀번호가 맞지 않습니다.", locked: "여러 번 틀려 잠겼습니다. 10분 뒤 다시 하세요.", length: "숫자 6~12자리로 정해 주세요.", same: "받은 번호와 다른 번호로 정해 주세요." };
+function logout(){
+  loadSeq++; me = pin = asking = null; orders = []; reports = []; sends = []; staff = []; issued = {};
+  loaded = { o:false, r:false }; lastRaw = ""; lastSaved = null; confirmDel = null;
+  store("wo-me", null); store("wo-pin", null);
+}
+function enter(name, p){
+  me = name; pin = p; asking = null; store("wo-me", me); store("wo-pin", pin);
+  render(); refresh().catch(() => {});
+}
+function pinField(id, label, hint){
+  return `<div class="field"><label for="${id}">${label} <span class="hint">${hint}</span></label><input type="password" id="${id}" maxlength="64" autocomplete="off"></div>`;
+}
+function pickPin(name, note = ""){
+  asking = name; renderWho();
+  $("#app").innerHTML = `<form class="stack" id="pf" novalidate><div><h2>${esc(name)}</h2></div><div class="panel stack">${pinField("pin", "비밀번호", "이 기기에서 처음 한 번만")}
+    <div class="row"><button class="primary" type="submit" id="go">들어가기</button><button type="button" class="ghost" id="back">이름 다시 고르기</button></div><span class="muted small" id="err">${esc(note)}</span></div></form>`;
+  $("#back").onclick = () => { asking = null; render(); };
+  $("#pin").focus();
+  $("#pf").onsubmit = async e => {
+    e.preventDefault(); const p = $("#pin").value, err = $("#err"); $("#go").disabled = true;
+    try {
+      const a = await rpc("wo_login", { p_name: name, p_pin: p });
+      if (asking !== name) return;
+      if (a === "ok") return enter(name, p);
+      if (a === "change") return newPin(name, p);
+      err.textContent = a === "unset" ? (name === BOSS ? "비밀번호를 아직 정하지 않았습니다. 맥북에서 먼저 정해 주세요." : "아직 첫 번호가 없습니다. 이사님께 받아 주세요.") : (PIN_MSG[a] || "들어가지 못했습니다.");
+    } catch(x){ err.textContent = "연결하지 못했습니다. 인터넷을 확인해 주세요."; }
+    $("#go").disabled = false;
+  };
+}
+function newPin(name, old){
+  $("#app").innerHTML = `<form class="stack" id="pf" novalidate><div><h2>${esc(name)}</h2><p class="muted small" style="margin:4px 0 0">앞으로 쓸 내 비밀번호를 정해 주세요.</p></div><div class="panel stack">${pinField("p1", "새 비밀번호", "숫자 6자리 이상")}${pinField("p2", "한 번 더", "")}
+    <div class="row"><button class="primary" type="submit" id="go">정하기</button></div><span class="muted small" id="err"></span></div></form>`;
+  $("#pf").onsubmit = async e => {
+    e.preventDefault(); const p = $("#p1").value, err = $("#err");
+    if (p !== $("#p2").value){ err.textContent = "두 번호가 서로 다릅니다."; return; }
+    $("#go").disabled = true;
+    try {
+      const a = await rpc("wo_change_pin", { p_name: name, p_old: old, p_new: p });
+      if (a === "ok") return enter(name, p);
+      err.textContent = PIN_MSG[a] || "정하지 못했습니다.";
+    } catch(x){ err.textContent = "연결하지 못했습니다. 인터넷을 확인해 주세요."; }
+    $("#go").disabled = false;
+  };
+}
+function renderPins(){
+  const L = { unset: "번호 없음", issued: "첫 번호 받음(아직 안 바꿈)", own: "자기 번호 사용 중" };
+  $("#pane").innerHTML = `<div class="stack"><p class="muted small" style="margin:0">새 번호를 만들면 그 직원에게만 알려 주세요. 직원이 처음 들어올 때 자기 번호로 바꿉니다. 번호는 이 화면을 나가면 다시 볼 수 없습니다.</p>
+    ${Object.values(TEAMS).flat().map(n => { const x = staff.find(v => v.name === n); return `<div class="panel row" style="justify-content:space-between"><span><b>${esc(n)}</b> <span class="muted small">${L[x?.s] || "불러오는 중"}</span>${issued[n] ? ` <b>첫 번호 ${esc(issued[n])}</b>` : ""}</span><button data-issue="${esc(n)}">새 번호 만들기</button></div>`; }).join("")}</div>`;
+  $("#pane").querySelectorAll("[data-issue]").forEach(b => b.onclick = async () => {
+    const n = b.dataset.issue, x = staff.find(v => v.name === n);
+    if (x?.s === "own" && b.dataset.sure !== "1"){ b.dataset.sure = "1"; b.textContent = "정말 바꾸기"; return; }
+    b.disabled = true;
+    try { const j = await rpc("wo_issue_pin", { p_boss: pin, p_name: n });
+      if (j.r !== "ok") throw 0; issued[n] = j.pin; await refresh(false).catch(() => {}); renderPins(); }
+    catch(e){ toast("번호를 만들지 못했습니다."); b.disabled = false; }
+  });
 }
 
 /* ---------- shared pieces ---------- */
@@ -288,7 +352,7 @@ async function sendReport(id, btn){
   const memo = (document.getElementById("memo-"+id)?.value || "").trim();
   btn.disabled = true;
   try {
-    await api("rpc/wo_report", "POST", { p_order: id, p_name: me, p_status: st, p_memo: memo });
+    if (await rpc("wo_report_pin", { p_order: id, p_name: me, p_pin: pin, p_status: st, p_memo: memo }) !== "ok") throw 0;
     await refresh(false).catch(() => {});
     openId = id; toast("보고를 보냈습니다."); render();
   } catch(e){ toast("보고를 저장하지 못했습니다. 인터넷 연결을 확인하고 다시 눌러 주세요."); btn.disabled = false; }
@@ -298,12 +362,14 @@ async function sendReport(id, btn){
 function renderAdmin(){
   let h = `<div class="tabs" role="tablist">
     <button role="tab" id="tab-new" aria-selected="${adminTab==="new"}">새 지시 쓰기</button>
-    <button role="tab" id="tab-list" aria-selected="${adminTab==="list"}">지시 목록 ${orders.length ? `(${orders.length})` : ""}</button></div>`;
+    <button role="tab" id="tab-list" aria-selected="${adminTab==="list"}">지시 목록 ${orders.length ? `(${orders.length})` : ""}</button>
+    <button role="tab" id="tab-pins" aria-selected="${adminTab==="pins"}">직원 비밀번호</button></div>`;
   h += `<div id="pane"></div>`;
   $("#app").innerHTML = h;
-  $("#tab-new").onclick = () => { adminTab = "new"; lastSaved = null; render(); };
-  $("#tab-list").onclick = () => { adminTab = "list"; render(); };
-  if (adminTab === "new") renderForm(); else renderList();
+  $("#tab-new").onclick = () => { adminTab = "new"; lastSaved = null; issued = {}; render(); };
+  $("#tab-list").onclick = () => { adminTab = "list"; issued = {}; render(); };
+  $("#tab-pins").onclick = () => { adminTab = "pins"; render(); };
+  if (adminTab === "new") renderForm(); else if (adminTab === "pins") renderPins(); else renderList();
 }
 
 function renderList(){
@@ -317,6 +383,7 @@ function renderList(){
     h += `<details class="ticket${o.priority==="긴급"?" urgent":""}" data-id="${esc(o.id)}" ${openId===o.id?"open":""}>${ticketHead(o)}
       <div class="body">${detailHTML(o)}
         <div class="field"><span class="lab">보고 이력</span>${histHTML(o.id)}</div>
+        ${sendLine(o.id) ? `<p class="muted small" style="margin:0">${sendLine(o.id)}</p>` : ""}
         <div class="row"><button data-copy="${esc(o.id)}">카톡용 다시 복사</button>
           ${confirmDel===o.id
             ? `<span class="confirm">정말 지울까요? 보고 이력도 함께 지워집니다. <button class="danger" data-delok="${esc(o.id)}">지우기</button><button class="ghost" data-delno>취소</button></span>`
@@ -335,7 +402,7 @@ function renderList(){
 
 async function deleteOrder(id){
   try {
-    await api("wo_orders?id=eq." + encodeURIComponent(id), "DELETE"); // 보고 이력도 함께 지워짐
+    if (await rpc("wo_delete", { p_boss: pin, p_id: id }) !== "ok") throw 0; // 보고 이력도 함께 지워짐
     orders = orders.filter(o => o.id !== id);
     confirmDel = null; toast("지시를 지웠습니다."); render(); refresh().catch(() => {});
   } catch(e){ toast("지우지 못했습니다. 연결을 확인하세요."); }
@@ -359,7 +426,7 @@ function renderForm(){
   if (lastSaved){
     const o = lastSaved;
     $("#pane").innerHTML = `<div class="stack"><div class="panel stack">
-      <div><h2>지시를 저장했습니다</h2><p class="muted small" style="margin:4px 0 0">아래 글을 복사해 받는 사람에게 카톡으로 보내세요.</p></div>
+      <div><h2>지시를 저장했습니다</h2><p class="muted small" style="margin:4px 0 0">맥북이 켜져 있으면 카톡이 자동으로 나갑니다. 안 나가면 아래 글을 복사해 보내세요.</p></div>
       <div class="copybox" id="copybox">${esc(kakaoText(o))}</div>
       <div class="row"><button class="primary" id="copy">글과 링크 복사</button><button id="again">새 지시 또 쓰기</button><button class="ghost" id="tolist">지시 목록 보기</button></div>
     </div></div>`;
@@ -386,7 +453,7 @@ function renderForm(){
       <div class="field"><span class="lab">꼭 지킬 것</span>${chipGroup("must", MUSTS, "checkbox", ["완료보고"])}</div>
       <div class="field"><label for="memo">짧은 메모 <span class="hint">선택</span></label><textarea id="memo" maxlength="200" placeholder="예: 냉장 3번 칸 재료 먼저 사용"></textarea></div>
     </div>
-    <div class="row"><button class="primary" type="submit" id="save">저장하고 카톡용 글 만들기</button><span class="muted small" id="err"></span></div>
+    <div class="row"><button class="primary" type="submit" id="save">저장하고 카톡 보내기</button><span class="muted small" id="err"></span></div>
   </form>`;
   const f = $("#f");
   const drawPeople = () => {
@@ -414,7 +481,13 @@ function renderForm(){
       purposes: vals("purpose"), coops: vals("coop"), musts: vals("must"), memo: $("#memo").value.trim(),
       createdBy: me, createdAt: Date.now(), status: "", statusBy: {} };
     $("#save").disabled = true;
-    try { await api("wo_orders", "POST", { id, ...o }); lastSaved = { id, ...o }; await refresh(false).catch(() => {}); render(); window.scrollTo(0,0); }
+    try {
+      const ans = await rpc("wo_create", { p_order: { id, ...o }, p_pin: pin });
+      if (ans !== "ok"){
+        $("#err").textContent = ans === "bad" ? "비밀번호가 바뀌었습니다. 이름 바꾸기로 다시 들어와 주세요." : (PIN_MSG[ans] || "저장하지 못했습니다.");
+        $("#save").disabled = false; return;
+      }
+      lastSaved = { id, ...o }; await refresh(false).catch(() => {}); render(); window.scrollTo(0,0); }
     catch(err){ $("#err").textContent = "저장하지 못했습니다. 인터넷 연결을 확인하고 다시 눌러 주세요."; $("#save").disabled = false; }
   };
 }
@@ -422,7 +495,7 @@ function renderForm(){
 /* ---------- main ---------- */
 function render(){
   renderWho();
-  if (!me) return renderPick();
+  if (!me) return asking ? pickPin(asking) : renderPick();
   if (me === BOSS) return renderAdmin();
   return renderStaff();
 }
@@ -440,9 +513,9 @@ window.addEventListener("hashchange", () => { initHash(); if (me) render(); });
 
 (async function start(){
   initHash();
-  const saved = load("wo-me"); if (saved && (saved === BOSS || TEAM_OF[saved])) me = saved;
+  const saved = load("wo-me"); if (saved && load("wo-pin") && (saved === BOSS || TEAM_OF[saved])){ me = saved; pin = load("wo-pin"); }
   render();
-  const timer = setTimeout(() => { if (!loaded.o) { slow = true; rerenderData(); } }, 10000);
+  const timer = setTimeout(() => { if (me && !loaded.o) { slow = true; rerenderData(); } }, 10000);
   const tick = () => refresh().then(() => clearTimeout(timer)).catch(() => {});
   await tick();
   setInterval(() => { if (!document.hidden) tick(); }, 10000);
