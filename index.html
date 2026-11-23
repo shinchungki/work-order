@@ -138,7 +138,7 @@ async function rpc(fn, args){
 }
 let sends = [];
 const SEND_LABEL = { pending: "카톡 대기", sending: "카톡 보내는 중", sent: "카톡 보냄", failed: "카톡 실패" };
-const KIND_LABEL = { before: "전날 알림 ", day: "당일 알림 ", late1: "독촉 1 ", late2: "독촉 2 ", late3: "독촉 3 " };
+const KIND_LABEL = { before: "전날 알림 ", day: "당일 알림 ", late1: "독촉 1 ", late2: "독촉 2 ", late3: "독촉 3 ", nudge: "진행 확인 " };
 const sendLine = id => sends.filter(x => x.order_id === id).map(x => `${KIND_LABEL[x.kind] || ""}${esc(x.person)}: ${SEND_LABEL[x.state]}${x.note ? " (" + esc(x.note) + ")" : ""}`).join(" · ");
 // 지시와 보고를 다시 불러온다. 바뀐 것이 있을 때만 화면을 다시 그린다.
 let lastRaw = "", loadSeq = 0;
@@ -173,7 +173,7 @@ const MUSTS = ["비용 발생 시 사전승인","중간보고","완료보고"];
 const STATUSES = ["접수","진행중","완료","문제발생"];
 
 let me = null, pin = null, asking = null, staff = [], options = [], routines = [], rtForm = false, rtDel = null, boardM = null, boardDay = null, issued = {}, orders = [], reports = [], loaded = {o:false,r:false}, slow = false;
-let adminTab = "list", filter = "전체", openId = null, lastSaved = null, confirmDel = null;
+let adminTab = "list", filter = "전체", openId = null, lastSaved = null, confirmDel = null, confirmNudge = null;
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -415,6 +415,9 @@ function renderList(){
         <div class="field"><span class="lab">보고 이력</span>${histHTML(o.id)}</div>
         ${sendLine(o.id) ? `<p class="muted small" style="margin:0">${sendLine(o.id)}</p>` : ""}
         <div class="row"><button data-copy="${esc(o.id)}">카톡용 다시 복사</button>
+          ${!nudgeTo(o).length ? "" : confirmNudge===o.id
+            ? `<span class="confirm">${nudgeTo(o).map(esc).join(", ")}에게 진행 확인 카톡을 보낼까요? <button class="primary" data-nudgeok="${esc(o.id)}">보내기</button><button class="ghost" data-nudgeno>취소</button></span>`
+            : `<button data-nudge="${esc(o.id)}">진행 확인</button>`}
           ${confirmDel===o.id
             ? `<span class="confirm">정말 지울까요? 보고 이력도 함께 지워집니다. <button class="danger" data-delok="${esc(o.id)}">지우기</button><button class="ghost" data-delno>취소</button></span>`
             : `<button class="ghost" data-del="${esc(o.id)}">지시 삭제</button>`}</div>
@@ -425,9 +428,23 @@ function renderList(){
   bindDetails($("#pane"));
   $("#pane").querySelectorAll("input[name=flt]").forEach(r => r.onchange = () => { filter = r.value; render(); });
   $("#pane").querySelectorAll("[data-copy]").forEach(b => b.onclick = () => { const o = orders.find(x => x.id === b.dataset.copy); if (o) copyText(kakaoText(o)); });
+  $("#pane").querySelectorAll("[data-nudge]").forEach(b => b.onclick = () => { confirmNudge = b.dataset.nudge; openId = confirmNudge; render(); });
+  $("#pane").querySelectorAll("[data-nudgeno]").forEach(b => b.onclick = () => { confirmNudge = null; render(); });
+  $("#pane").querySelectorAll("[data-nudgeok]").forEach(b => b.onclick = () => { b.disabled = true; nudge(b.dataset.nudgeok); });
   $("#pane").querySelectorAll("[data-del]").forEach(b => b.onclick = () => { confirmDel = b.dataset.del; openId = confirmDel; render(); });
   $("#pane").querySelectorAll("[data-delno]").forEach(b => b.onclick = () => { confirmDel = null; render(); });
   $("#pane").querySelectorAll("[data-delok]").forEach(b => b.onclick = () => deleteOrder(b.dataset.delok));
+}
+
+const nudgeTo = o => [...new Set(o.assignees)].filter(n => (o.statusBy || {})[n] !== "완료");
+async function nudge(id){
+  try {
+    const j = await rpc("wo_nudge", { p_boss: pin, p_id: id });
+    if (j.r !== "ok") throw 0;
+    confirmNudge = null;
+    toast(j.who.length ? `${j.who.join(", ")}에게 진행 확인 카톡을 보냅니다. 맥북이 켜져 있어야 나갑니다.` : "방금 보냈거나 모두 끝났습니다. 같은 사람에게는 1시간에 한 번 보냅니다.");
+    render(); refresh().catch(() => {});
+  } catch(e){ toast("보내지 못했습니다. 인터넷 연결을 확인하세요."); render(); }
 }
 
 async function deleteOrder(id){
