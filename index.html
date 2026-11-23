@@ -8,38 +8,28 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
 /* Layout: one narrow column of work tickets; sticky header with who-am-I; admin gets tabs (새 지시 / 지시 목록) */
-:root{
-  --bg:#f3f4f1; --surface:#ffffff; --ink:#1d2a26; --muted:#5f6b66; --line:#d9ddd8;
-  --accent:#1f6b57; --accent-ink:#ffffff; --accent-soft:#e1efe9;
-  --warn:#b45309; --warn-soft:#fdf0e1; --bad:#b42318; --bad-soft:#fdeceb;
-  --ok:#1f7a3f; --ok-soft:#e5f4ea; --info:#2557a7; --info-soft:#e6eefb;
+:root{color-scheme:light;
+  --bg:#eef1f4; --surface:#ffffff; --ink:#111827; --muted:#4b5563; --line:#c3cad3;
+  --accent:#0b5d48; --accent-ink:#ffffff; --accent-soft:#d9f0e6;
+  --warn:#8f3d00; --warn-soft:#ffe8cc; --bad:#b00020; --bad-soft:#fde0e0;
+  --ok:#12612f; --ok-soft:#d5f2df; --info:#174a9c; --info-soft:#dbe8ff;
   --font:"IBM Plex Sans KR",-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
 }
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#141a18; --surface:#1c2421; --ink:#e6ece9; --muted:#9aa8a2; --line:#2f3a36;
-  --accent:#4fb393; --accent-ink:#0e1714; --accent-soft:#1f3a31;
-  --warn:#f0a454; --warn-soft:#3a2b18; --bad:#f2837a; --bad-soft:#3d1f1c;
-  --ok:#6cc98b; --ok-soft:#1b3424; --info:#86aef0; --info-soft:#1d2a40; color-scheme:dark}}
-:root[data-theme="dark"]{
-  --bg:#141a18; --surface:#1c2421; --ink:#e6ece9; --muted:#9aa8a2; --line:#2f3a36;
-  --accent:#4fb393; --accent-ink:#0e1714; --accent-soft:#1f3a31;
-  --warn:#f0a454; --warn-soft:#3a2b18; --bad:#f2837a; --bad-soft:#3d1f1c;
-  --ok:#6cc98b; --ok-soft:#1b3424; --info:#86aef0; --info-soft:#1d2a40; color-scheme:dark}
 *{box-sizing:border-box}
-body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.55}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:17px;line-height:1.6}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
 .wrap{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 48px}
 header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
 header.top .in{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .brand{font-weight:700;font-size:17px;letter-spacing:-.01em}
-.brand small{font-weight:500;color:var(--muted);font-size:12px;margin-left:6px}
-.who{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:14px}
+.brand small{font-weight:500;color:var(--muted);font-size:14px;margin-left:6px}
+.who{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:16px}
 h1,h2,h3{text-wrap:balance;margin:0;letter-spacing:-.01em}
-h2{font-size:19px}
-h3{font-size:15px}
+h2{font-size:22px}
+h3{font-size:17px}
 .muted{color:var(--muted)}
-.small{font-size:13px}
+.small{font-size:15px}
 button,.btn{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 14px;min-height:40px}
 button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
@@ -51,22 +41,22 @@ textarea{min-height:64px;resize:vertical}
 .stack{display:flex;flex-direction:column;gap:16px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .field{display:flex;flex-direction:column;gap:8px}
-.field>label,.field>.lab{font-weight:600;font-size:14px}
-.field .hint{font-weight:400;color:var(--muted);font-size:12px;margin-left:6px}
+.field>label,.field>.lab{font-weight:700;font-size:17px}
+.field .hint{font-weight:400;color:var(--muted);font-size:14px;margin-left:6px}
 .chips{display:flex;gap:8px;flex-wrap:wrap}
 .chip{position:relative}
 .chip input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
-.chip span{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:14px;min-height:40px;user-select:none}
+.chip span{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:16px;min-height:40px;user-select:none}
 .chip input:checked+span{background:var(--accent-soft);border-color:var(--accent);color:var(--ink);font-weight:600}
 .chip input:checked+span::before{content:"✓";color:var(--accent);font-weight:700}
 .chip input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px}
 .team-block{display:flex;flex-direction:column;gap:6px}
-.team-block .tn{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.team-block .tn{font-size:14px;color:var(--muted);letter-spacing:.04em}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
 .tabs button{border:none;border-bottom:3px solid transparent;border-radius:0;background:transparent;padding:10px 14px;font-weight:600;color:var(--muted)}
 .tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
-.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;font-size:14px;font-weight:600;white-space:nowrap}
 .s-대기{background:var(--line);color:var(--muted)}
 .s-접수{background:var(--info-soft);color:var(--info)}
 .s-진행중{background:var(--warn-soft);color:var(--warn)}
@@ -78,31 +68,52 @@ textarea{min-height:64px;resize:vertical}
 .ticket.urgent{border-left:4px solid var(--bad)}
 .ticket>summary{list-style:none;cursor:pointer;padding:14px 16px;display:grid;grid-template-columns:1fr auto;gap:4px 12px}
 .ticket>summary::-webkit-details-marker{display:none}
-.ticket .no{font-family:var(--mono);font-size:12px;color:var(--muted)}
-.ticket .tt{font-weight:600;font-size:16px;min-width:0;overflow-wrap:anywhere}
-.ticket .meta{grid-column:1/-1;font-size:13px;color:var(--muted);display:flex;gap:4px 12px;flex-wrap:wrap}
+.ticket .no{font-family:var(--mono);font-size:14px;color:var(--muted)}
+.ticket .tt{font-weight:700;font-size:19px;min-width:0;overflow-wrap:anywhere}
+.ticket .meta{grid-column:1/-1;font-size:15px;color:var(--muted);display:flex;gap:4px 12px;flex-wrap:wrap}
 .ticket .body{border-top:1px dashed var(--line);padding:14px 16px;display:flex;flex-direction:column;gap:14px}
-dl.kv{display:grid;grid-template-columns:7em 1fr;gap:6px 12px;margin:0;font-size:14px}
+dl.kv{display:grid;grid-template-columns:7em 1fr;gap:6px 12px;margin:0;font-size:16px}
 dl.kv dt{color:var(--muted)}
 dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .must{display:flex;gap:6px;flex-wrap:wrap}
-.must span{font-size:12px;padding:2px 8px;border:1px solid var(--warn);color:var(--warn);border-radius:6px}
+.must span{font-size:14px;padding:2px 8px;border:1px solid var(--warn);color:var(--warn);border-radius:6px}
 .hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-.hist li{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:14px;padding:8px 10px;background:var(--bg);border-radius:8px}
-.hist .when{grid-column:2;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
-.copybox{white-space:pre-wrap;font-size:14px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;max-height:320px;overflow:auto;overflow-wrap:anywhere}
-.banner{padding:10px 14px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:14px}
+.hist li{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:16px;padding:8px 10px;background:var(--bg);border-radius:8px}
+.hist .when{grid-column:2;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.copybox{white-space:pre-wrap;font-size:16px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;max-height:320px;overflow:auto;overflow-wrap:anywhere}
+.banner{padding:10px 14px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:16px}
 .empty{padding:28px 16px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
 .counts{display:flex;gap:8px;flex-wrap:wrap}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-size:14px;z-index:20}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-size:16px;z-index:20}
 .names{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .names button{text-align:left;padding:12px 14px;min-height:56px}
 .names button b{display:block}
 .names button small{color:var(--muted)}
 .boss{border-color:var(--accent);background:var(--accent-soft)}
-.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px}
-@media (max-width:480px){dl.kv{grid-template-columns:1fr}dl.kv dt{margin-top:4px}}
+.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:16px}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.tabs{flex-wrap:wrap}.tabs button{white-space:nowrap}
+.calgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+button.cal{min-height:52px;padding:4px 2px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;font-size:15px;border-radius:8px}
+button.cal b{font-size:14px}button.cal:disabled{opacity:.55;cursor:default}
+table.board{width:100%;border-collapse:collapse;font-size:16px}.board th,.board td{padding:8px 4px;text-align:center;border-bottom:1px solid var(--line)}.board th:first-child,.board td:first-child{text-align:left}
+select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-height:44px}
+header.top{background:var(--accent);border-bottom:0;color:#fff}
+body::before{background:var(--accent)}
+header.top .brand small,header.top .muted{color:#e3f4ec}
+header.top button.ghost{color:#fff;border-color:#ffffff99}
+button{min-height:46px;font-weight:600}
+button:not(.ghost):not(.primary):not(.danger):not([role=tab]):not(.cal):not(:disabled){border-color:#8f9aa8}
+input[type=text],input[type=password],input[type=date],input[type=number],textarea{border:1.5px solid #8f9aa8}
+.chip span{min-height:46px;font-size:16px;border:1.5px solid #8f9aa8}
+.chip input:checked+span{background:var(--accent);border-color:var(--accent);color:#fff}
+.chip input:checked+span::before{color:#fff}
+.ticket{border:1.5px solid var(--line);box-shadow:0 1px 3px #1118271f}
+.tabs{gap:6px;border-bottom:0}.tabs button{border:1.5px solid #8f9aa8;border-radius:10px;background:var(--surface);color:var(--ink);padding:8px 14px}
+.tabs button[aria-selected=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+.s-대기{background:#dfe3e8;color:#374151}.pill{padding:4px 12px}
+@media (max-width:480px){dl.kv{grid-template-columns:5em 1fr}.brand small,.who .muted{display:none}header.top .in{flex-wrap:nowrap}.ticket .body{padding:14px 12px}}
 </style>
 </head>
 <body>
@@ -127,7 +138,8 @@ async function rpc(fn, args){
 }
 let sends = [];
 const SEND_LABEL = { pending: "카톡 대기", sending: "카톡 보내는 중", sent: "카톡 보냄", failed: "카톡 실패" };
-const sendLine = id => sends.filter(x => x.order_id === id).map(x => `${x.kind === "before" ? "전날 알림 " : x.kind === "day" ? "당일 알림 " : ""}${esc(x.person)}: ${SEND_LABEL[x.state]}${x.note ? " (" + esc(x.note) + ")" : ""}`).join(" · ");
+const KIND_LABEL = { before: "전날 알림 ", day: "당일 알림 ", late1: "독촉 1 ", late2: "독촉 2 ", late3: "독촉 3 " };
+const sendLine = id => sends.filter(x => x.order_id === id).map(x => `${KIND_LABEL[x.kind] || ""}${esc(x.person)}: ${SEND_LABEL[x.state]}${x.note ? " (" + esc(x.note) + ")" : ""}`).join(" · ");
 // 지시와 보고를 다시 불러온다. 바뀐 것이 있을 때만 화면을 다시 그린다.
 let lastRaw = "", loadSeq = 0;
 async function refresh(redraw = true){
@@ -137,8 +149,8 @@ async function refresh(redraw = true){
   if (seq !== loadSeq) return;
   if (j.r === "locked") throw new Error("locked");
   if (j.r !== "ok"){ const who = me; logout(); pickPin(who, "비밀번호가 바뀌었습니다. 다시 넣어 주세요."); return; }
-  const os = j.orders, rs = j.reports, ss = j.sends; staff = j.staff || []; options = j.options || [];
-  const first = !loaded.o, raw = JSON.stringify([os, rs, ss, staff]);
+  const os = j.orders, rs = j.reports, ss = j.sends; staff = j.staff || []; options = j.options || []; routines = j.routines || [];
+  const first = !loaded.o, raw = JSON.stringify([os, rs, ss, staff, routines]);
   loaded.o = loaded.r = true; slow = false;
   if (raw === lastRaw && !first) return;
   lastRaw = raw; orders = os; reports = rs; sends = ss;
@@ -160,7 +172,7 @@ const COOPS = ["다른 팀과 협조 필요","작업 전 지시자와 상의","�
 const MUSTS = ["비용 발생 시 사전승인","중간보고","완료보고"];
 const STATUSES = ["접수","진행중","완료","문제발생"];
 
-let me = null, pin = null, asking = null, staff = [], options = [], issued = {}, orders = [], reports = [], loaded = {o:false,r:false}, slow = false;
+let me = null, pin = null, asking = null, staff = [], options = [], routines = [], rtForm = false, rtDel = null, boardM = null, boardDay = null, issued = {}, orders = [], reports = [], loaded = {o:false,r:false}, slow = false;
 let adminTab = "list", filter = "전체", openId = null, lastSaved = null, confirmDel = null;
 
 const $ = s => document.querySelector(s);
@@ -311,7 +323,7 @@ function ticketHead(o){
   const st = statusOf(o);
   return `<summary><span class="no">No.${orderNo(o)}</span><span class="pill s-${esc(st)}">${esc(st)}</span>
     <span class="tt">${esc(o.title)}</span><span></span>
-    <span class="meta"><span>${esc(o.type)}</span><span>기한 ${esc(o.dueLabel)}</span><span class="p-${esc(o.priority)}">${esc(o.priority)}</span><span>${o.assignees.map(esc).join(", ")}</span></span></summary>`;
+    <span class="meta">${o.routine ? "<span>루틴</span>" : ""}<span>${esc(o.type)}</span><span>기한 ${esc(o.dueLabel)}</span><span class="p-${esc(o.priority)}">${esc(o.priority)}</span><span>${o.assignees.map(esc).join(", ")}</span></span></summary>`;
 }
 function bindDetails(root){
   root.querySelectorAll("details.ticket").forEach(d => d.addEventListener("toggle", () => { if (d.open) openId = d.dataset.id; else if (openId === d.dataset.id) openId = null; }));
@@ -363,13 +375,17 @@ function renderAdmin(){
   let h = `<div class="tabs" role="tablist">
     <button role="tab" id="tab-new" aria-selected="${adminTab==="new"}">새 지시 쓰기</button>
     <button role="tab" id="tab-list" aria-selected="${adminTab==="list"}">지시 목록 ${orders.length ? `(${orders.length})` : ""}</button>
+    <button role="tab" id="tab-routine" aria-selected="${adminTab==="routine"}">루틴업무</button>
+    <button role="tab" id="tab-board" aria-selected="${adminTab==="board"}">현황판</button>
     <button role="tab" id="tab-pins" aria-selected="${adminTab==="pins"}">직원 비밀번호</button></div>`;
   h += `<div id="pane"></div>`;
   $("#app").innerHTML = h;
   $("#tab-new").onclick = () => { adminTab = "new"; lastSaved = null; issued = {}; render(); };
   $("#tab-list").onclick = () => { adminTab = "list"; issued = {}; render(); };
+  $("#tab-routine").onclick = () => { adminTab = "routine"; rtForm = false; rtDel = null; issued = {}; render(); };
+  $("#tab-board").onclick = () => { adminTab = "board"; boardM = boardDay = null; issued = {}; render(); };
   $("#tab-pins").onclick = () => { adminTab = "pins"; render(); };
-  if (adminTab === "new") renderForm(); else if (adminTab === "pins") renderPins(); else renderList();
+  if (adminTab === "new") renderForm(); else if (adminTab === "routine") rtForm ? renderForm(true) : renderRoutines(); else if (adminTab === "board") renderBoard(); else if (adminTab === "pins") renderPins(); else renderList();
 }
 
 function renderList(){
@@ -460,11 +476,11 @@ function bindOwn(box){
   };
 }
 
-function renderForm(){
-  if (lastSaved){
+function renderForm(rt = false){
+  if (!rt && lastSaved){
     const o = lastSaved;
     $("#pane").innerHTML = `<div class="stack"><div class="panel stack">
-      <div><h2>지시를 저장했습니다</h2><p class="muted small" style="margin:4px 0 0">맥북이 켜져 있으면 카톡이 자동으로 나갑니다. 기한 전날 17시와 당일 8시에도 완료하지 않은 사람에게 알림이 갑니다. 안 나가면 아래 글을 복사해 보내세요.</p></div>
+      <div><h2>지시를 저장했습니다</h2><p class="muted small" style="margin:4px 0 0">맥북이 켜져 있으면 카톡이 자동으로 나갑니다. 기한 전날 17시와 당일 8시, 기한이 지나면 3일 동안 9시에 완료하지 않은 사람에게 알림이 갑니다. 안 나가면 아래 글을 복사해 보내세요.</p></div>
       <div class="copybox" id="copybox">${esc(kakaoText(o))}</div>
       <div class="row"><button class="primary" id="copy">글과 링크 복사</button><button id="again">새 지시 또 쓰기</button><button class="ghost" id="tolist">지시 목록 보기</button></div>
     </div></div>`;
@@ -474,6 +490,11 @@ function renderForm(){
     return;
   }
   const due = dueOptions();
+  const when = `<div class="field"><span class="lab">반복</span>${chipGroup("freq", [{v:"day",label:"매일"},{v:"week",label:"매주"},{v:"month",label:"매월"}], "radio", ["day"])}</div>
+      <div class="field" id="rt-week" hidden><span class="lab">요일 <span class="hint">여러 개 가능</span></span>${chipGroup("dow", [1,2,3,4,5,6,0].map(n => ({v:String(n),label:DOW[n]})), "checkbox")}</div>
+      <div class="field" id="rt-month" hidden><label for="dom">날짜 <span class="hint">31일로 하면 매달 말일</span></label><select id="dom">${Array.from({length:31},(_,i) => `<option value="${i+1}">${i+1}일</option>`).join("")}</select></div>
+      <div class="field"><label for="rt-hh">지시하는 시각</label><select id="rt-hh">${Array.from({length:11},(_,i) => `<option value="${i+8}">${i+8}시</option>`).join("")}</select></div>
+      <div class="field"><span class="lab">기한</span>${chipGroup("rdue", [{v:"0",label:"그날"},{v:"1",label:"다음 날"},{v:"3",label:"3일 뒤"},{v:"7",label:"7일 뒤"}], "radio", ["0"])}</div>`;
   $("#pane").innerHTML = `<form class="stack" id="f" novalidate>${dataNote()}
     <div class="panel stack">
       <div class="field"><span class="lab">받는 팀</span>${chipGroup("team", Object.keys(TEAMS), "checkbox")}</div>
@@ -482,7 +503,7 @@ function renderForm(){
     <div class="panel stack">
       <div class="field"><span class="lab">업무 유형</span>${ownGroup("type", TYPES, "radio")}</div>
       <div class="field"><label for="title">업무 제목</label><input type="text" id="title" maxlength="60" placeholder="예: 내일 납품분 불고기 200인분 조리"></div>
-      <div class="field"><span class="lab">기한</span>${chipGroup("due", due, "radio", ["today"])}<input type="date" id="dueDate" hidden></div>
+      ${rt ? when : `<div class="field"><span class="lab">기한</span>${chipGroup("due", due, "radio", ["today"])}<input type="date" id="dueDate" hidden></div>`}
       <div class="field"><span class="lab">우선순위</span>${chipGroup("prio", PRIOS, "radio", ["보통"])}</div>
     </div>
     <div class="panel stack">
@@ -491,7 +512,7 @@ function renderForm(){
       <div class="field"><span class="lab">꼭 지킬 것</span>${ownGroup("must", MUSTS, "checkbox", ["완료보고"])}</div>
       <div class="field"><label for="memo">짧은 메모 <span class="hint">선택</span></label><textarea id="memo" maxlength="200" placeholder="예: 냉장 3번 칸 재료 먼저 사용"></textarea></div>
     </div>
-    <div class="row"><button class="primary" type="submit" id="save">저장하고 카톡 보내기</button><span class="muted small" id="err"></span></div>
+    <div class="row"><button class="primary" type="submit" id="save">${rt ? "루틴 저장" : "저장하고 카톡 보내기"}</button>${rt ? `<button type="button" class="ghost" id="rt-cancel">취소</button>` : ""}<span class="muted small" id="err"></span></div>
   </form>`;
   const f = $("#f");
   f.querySelectorAll("[data-own]").forEach(bindOwn);
@@ -504,6 +525,10 @@ function renderForm(){
     $("#people").querySelectorAll("[data-all]").forEach(b => b.onclick = () => TEAMS[b.dataset.all].forEach(p => { const i = document.getElementById("person-"+p); if (i) i.checked = true; }));
   };
   f.querySelectorAll("input[name=team]").forEach(i => i.onchange = drawPeople);
+  if (rt){
+    $("#rt-cancel").onclick = () => { rtForm = false; render(); };
+    f.querySelectorAll("input[name=freq]").forEach(i => i.onchange = () => { $("#rt-week").hidden = i.value !== "week"; $("#rt-month").hidden = i.value !== "month"; });
+  }
   f.querySelectorAll("input[name=due]").forEach(i => i.onchange = () => { $("#dueDate").hidden = i.value !== "pick" || !i.checked; });
   f.onsubmit = async e => {
     e.preventDefault();
@@ -513,7 +538,7 @@ function renderForm(){
     let dueKey = val("due"), dueLabel, dueDate;
     if (dueKey === "pick"){ dueDate = $("#dueDate").value; if (dueDate){ const [y,m,d] = dueDate.split("-").map(Number); dueLabel = md(new Date(y, m-1, d)); } }
     else { const o = due.find(x => x.v === dueKey); dueLabel = o?.label; dueDate = o?.date; }
-    const miss = [!assignees.length && "받는 사람", !type && "업무 유형", !title && "업무 제목", !dueLabel && "기한"].filter(Boolean);
+    const miss = [!assignees.length && "받는 사람", !type && "업무 유형", !title && "업무 제목", rt ? val("freq") === "week" && !vals("dow").length && "요일" : !dueLabel && "기한"].filter(Boolean);
     if (miss.length){ $("#err").textContent = miss.join(", ") + "을(를) 채워 주세요."; return; }
     const id = "o" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
     const o = { title, type, assignees, teams: [...new Set(assignees.map(a => TEAM_OF[a]))], dueLabel, dueDate, priority: val("prio") || "보통",
@@ -521,14 +546,75 @@ function renderForm(){
       createdBy: me, createdAt: Date.now(), status: "", statusBy: {} };
     $("#save").disabled = true;
     try {
-      const ans = await rpc("wo_create", { p_order: { id, ...o }, p_pin: pin });
+      const freq = val("freq"), { title: tt, type: ty, assignees: as, teams, priority, purposes, coops, musts, memo } = o;
+      const ans = rt ? await rpc("wo_routine", { p_boss: pin, p_act: "add", p_id: "r" + id.slice(1), p_data: {
+          body: { title: tt, type: ty, assignees: as, teams, priority, purposes, coops, musts, memo }, freq,
+          days: freq === "week" ? vals("dow").map(Number) : freq === "month" ? [+$("#dom").value] : [], hh: +$("#rt-hh").value, due_days: +val("rdue") } })
+        : await rpc("wo_create", { p_order: { id, ...o }, p_pin: pin });
       if (ans !== "ok"){
-        $("#err").textContent = ans === "bad" ? "비밀번호가 바뀌었습니다. 이름 바꾸기로 다시 들어와 주세요." : (PIN_MSG[ans] || "저장하지 못했습니다.");
+        $("#err").textContent = ans === "bad" ? "비밀번호가 바뀌었습니다. 이름 바꾸기로 다시 들어와 주세요." : (ans === "full" ? "루틴은 50개까지 만들 수 있습니다." : PIN_MSG[ans] || "저장하지 못했습니다.");
         $("#save").disabled = false; return;
       }
+      if (rt){ rtForm = false; toast("루틴을 저장했습니다."); await refresh(false).catch(() => {}); render(); window.scrollTo(0,0); return; }
       lastSaved = { id, ...o }; await refresh(false).catch(() => {}); render(); window.scrollTo(0,0); }
     catch(err){ $("#err").textContent = "저장하지 못했습니다. 인터넷 연결을 확인하고 다시 눌러 주세요."; $("#save").disabled = false; }
   };
+}
+
+/* ---------- 루틴업무 ---------- */
+const rtWhen = t => (t.freq === "day" ? "매일" : t.freq === "week" ? "매주 " + [1,2,3,4,5,6,0].filter(n => t.days.includes(n)).map(n => DOW[n]).join("·") : "매월 " + (t.days[0] === 31 ? "말일" : t.days[0] + "일")) + ` ${t.hh}시 · 기한 ${t.due_days ? t.due_days + "일 뒤" : "그날"}`;
+function renderRoutines(){
+  $("#pane").innerHTML = `<div class="stack">${dataNote()}
+    <div class="row"><button class="primary" id="rt-new">+ 루틴 만들기</button><span class="muted small">정한 때에 지시가 자동으로 만들어지고 카톡이 나갑니다.</span></div>
+    ${routines.length ? "" : `<div class="empty">아직 루틴이 없습니다.</div>`}
+    ${routines.map(t => `<div class="panel stack" style="gap:8px"><div><b>${esc(t.body.title)}</b> ${t.active ? "" : `<span class="pill s-대기">멈춤</span>`}</div>
+      <div class="small">${esc(rtWhen(t))}</div>
+      <div class="muted small">${esc(t.body.type)} · <span class="p-${esc(t.body.priority)}">${esc(t.body.priority)}</span> · ${t.body.assignees.map(esc).join(", ")}</div>
+      <div class="row"><button data-rt="${t.active ? "off" : "on"}" data-id="${esc(t.id)}">${t.active ? "멈추기" : "다시 켜기"}</button>
+      ${rtDel === t.id ? `<span class="confirm">루틴을 지울까요? 이미 만든 지시는 남습니다. <button class="danger" data-rt="delete" data-id="${esc(t.id)}">지우기</button><button class="ghost" data-rtno>취소</button></span>` : `<button class="ghost" data-rtdel="${esc(t.id)}">삭제</button>`}</div></div>`).join("")}</div>`;
+  $("#rt-new").onclick = () => { rtForm = true; render(); window.scrollTo(0,0); };
+  const q = k => $("#pane").querySelectorAll(k);
+  q("[data-rtdel]").forEach(b => b.onclick = () => { rtDel = b.dataset.rtdel; render(); });
+  q("[data-rtno]").forEach(b => b.onclick = () => { rtDel = null; render(); });
+  q("[data-rt]").forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { if (await rpc("wo_routine", { p_boss: pin, p_act: b.dataset.rt, p_id: b.dataset.id, p_data: {} }) !== "ok") throw 0;
+      rtDel = null; await refresh(false).catch(() => {}); render();
+    } catch(e){ b.disabled = false; toast("저장하지 못했습니다. 인터넷을 확인하세요."); }
+  });
+}
+
+/* ---------- 월간 현황판 (기한이 그 달인 지시 기준) ---------- */
+function renderBoard(){
+  const now = new Date(), today = ymd(now), m = boardM || today.slice(0, 7), [Y, M] = m.split("-").map(Number);
+  const list = orders.filter(o => (o.dueDate || "").startsWith(m));
+  const doneAt = (o, n) => reports.find(x => x.orderId === o.id && x.name === n && x.status === "완료")?.at;
+  const isDone = (o, n) => o.statusBy?.[n] === "완료";
+  const isLate = (o, n) => isDone(o, n) ? (doneAt(o, n) ? ymd(new Date(doneAt(o, n))) > o.dueDate : false) : o.dueDate < today;
+  const allDone = o => o.assignees.every(n => isDone(o, n));
+  const anyLate = o => o.assignees.some(n => !isDone(o, n)) && o.dueDate < today;
+  const rows = Object.keys(TEAM_OF).map(n => { const a = list.filter(o => o.assignees.includes(n)); return { n, all: a.length, done: a.filter(o => isDone(o, n)).length, late: a.filter(o => isLate(o, n)).length }; });
+  const pad = new Date(Y, M-1, 1).getDay(), len = new Date(Y, M, 0).getDate(), cells = [];
+  for (let i = 0; i < pad; i++) cells.push("<span></span>");
+  for (let d = 1; d <= len; d++){
+    const k = `${m}-${String(d).padStart(2,"0")}`, a = list.filter(o => o.dueDate === k), c = a.some(anyLate) ? "bad" : a.length && a.every(allDone) ? "ok" : "info";
+    cells.push(`<button type="button" class="cal" data-day="${k}" aria-pressed="${boardDay === k}" ${a.length ? "" : "disabled"} style="${k === today ? "border-color:var(--accent);" : ""}${boardDay === k ? "outline:2px solid var(--accent);" : ""}">${d}${a.length ? `<b style="color:var(--${c})">${a.length}건</b>` : ""}</button>`);
+  }
+  const picked = boardDay ? list.filter(o => o.dueDate === boardDay) : [];
+  const num = (l, v, c) => `<div class="panel" style="padding:12px;text-align:center"><div class="muted small">${l}</div><b style="font-size:20px${c ? `;color:var(--${c})` : ""}">${v}</b></div>`;
+  const done = list.filter(allDone).length;
+  $("#pane").innerHTML = `<div class="stack">${dataNote()}
+    <div class="row" style="justify-content:space-between"><button data-mv="-1" aria-label="이전 달">◀</button><h2>${Y}년 ${M}월</h2><button data-mv="1" aria-label="다음 달">▶</button></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${num("기한인 지시", list.length)}${num("완료", done, "ok")}${num("지연 중", list.filter(anyLate).length, "bad")}</div>
+    <div class="panel" style="padding:12px"><div class="calgrid">${[...DOW].map(d => `<span class="muted small" style="text-align:center">${d}</span>`).join("")}${cells.join("")}</div>
+      <p class="muted small" style="margin:8px 0 0">숫자는 그날이 기한인 지시입니다. 빨강 지연 · 초록 모두 완료 · 파랑 진행</p></div>
+    ${boardDay ? `<div class="field"><span class="lab">${esc(boardDay.slice(5).replace("-","/"))} 기한</span></div>` + picked.map(o => `<details class="ticket" data-id="${esc(o.id)}" ${openId===o.id?"open":""}>${ticketHead(o)}<div class="body">${detailHTML(o)}<div class="field"><span class="lab">보고 이력</span>${histHTML(o.id)}</div></div></details>`).join("") : ""}
+    <div class="panel" style="overflow-x:auto"><table class="board"><thead><tr><th>담당자</th><th>지시</th><th>완료</th><th>늦음</th><th>완료율</th></tr></thead><tbody>
+      ${rows.map(x => `<tr><td>${esc(x.n)}</td><td>${x.all}</td><td>${x.done}</td><td${x.late ? ` style="color:var(--bad)"` : ""}>${x.late}</td><td>${x.all ? Math.round(x.done / x.all * 100) + "%" : "–"}</td></tr>`).join("")}</tbody></table>
+      <p class="muted small" style="margin:8px 0 0">늦음 = 기한을 넘겨 완료했거나 아직 안 한 것</p></div></div>`;
+  bindDetails($("#pane"));
+  $("#pane").querySelectorAll("[data-mv]").forEach(b => b.onclick = () => { boardM = ymd(new Date(Y, M-1 + Number(b.dataset.mv), 1)).slice(0, 7); boardDay = null; render(); });
+  $("#pane").querySelectorAll("[data-day]").forEach(b => b.onclick = () => { boardDay = boardDay === b.dataset.day ? null : b.dataset.day; render(); });
 }
 
 /* ---------- main ---------- */
@@ -541,6 +627,7 @@ function render(){
 function rerenderData(){
   // keep the form intact while the boss is typing
   if (me === BOSS && adminTab === "new"){ const t = document.getElementById("tab-list"); if (t) t.textContent = `지시 목록 (${orders.length})`; return; }
+  if (me === BOSS && adminTab === "routine" && rtForm) return; // 루틴 쓰는 중
   // keep a half-typed report memo
   const active = document.activeElement; if (active && active.id?.startsWith("memo-") && active.value) return;
   if (document.querySelector('input[name^="st-"]:checked')) return;
