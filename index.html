@@ -56,6 +56,8 @@ textarea{min-height:64px;resize:vertical}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
 .tabs button{border:none;border-bottom:3px solid transparent;border-radius:0;background:transparent;padding:10px 14px;font-weight:600;color:var(--muted)}
 .tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
+.nb{display:inline-block;min-width:22px;padding:0 6px;margin-left:4px;border-radius:999px;background:var(--bad);color:#fff;font-size:14px;line-height:22px;text-align:center;white-space:nowrap}
+.nb:empty{display:none}
 .pill{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;font-size:14px;font-weight:600;white-space:nowrap}
 .s-대기{background:var(--line);color:var(--muted)}
 .s-접수{background:var(--info-soft);color:var(--info)}
@@ -240,7 +242,7 @@ function renderPick(){
 /* ---------- password ---------- */
 const PIN_MSG = { bad: "비밀번호가 맞지 않습니다.", locked: "여러 번 틀려 잠겼습니다. 10분 뒤 다시 하세요.", length: "숫자 6~12자리로 정해 주세요.", same: "받은 번호와 다른 번호로 정해 주세요." };
 function logout(){
-  loadSeq++; fbEdit = null; me = pin = asking = null; orders = []; reports = []; sends = []; staff = []; options = []; issued = {};
+  loadSeq++; wkNews = []; wkNewsAt = 0; document.title = "업무지시서"; fbEdit = null; me = pin = asking = null; orders = []; reports = []; sends = []; staff = []; options = []; issued = {};
   loaded = { o:false, r:false }; lastRaw = ""; lastSaved = null; confirmDel = null;
   store("wo-me", null); store("wo-pin", null);
   wkSeq++; wkRows = []; wkForm = null; wkState = "idle"; wkKind = "day"; wkDay = null; staffTab = "orders"; adminTab = "list";
@@ -248,7 +250,7 @@ function logout(){
 }
 function enter(name, p){
   me = name; pin = p; asking = null; store("wo-me", me); store("wo-pin", pin);
-  render(); refresh().catch(() => {});
+  render(); refresh().catch(() => {}); loadWkNews();
 }
 function pinField(id, label, hint){
   return `<div class="field"><label for="${id}">${label} <span class="hint">${hint}</span></label><input type="password" id="${id}" maxlength="64" autocomplete="off"></div>`;
@@ -305,6 +307,52 @@ function dataNote(){
   if (slow && !(loaded.o && loaded.r)) return `<div class="banner">저장된 지시를 아직 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.</div>`;
   return "";
 }
+/* ---------- 새 소식 표시 (본 것은 이 기기에만 기억) ---------- */
+let seenWho = null, seen = {}, wkNews = [], wkNewsAt = 0;
+function seenMap(){
+  if (seenWho !== me){
+    seenWho = me; seen = {};
+    try { seen = JSON.parse(load("wo-seen-" + me)) || {}; } catch(e){}
+    if (!seen.base){ seen.base = Date.now() - 7*864e5; store("wo-seen-" + me, JSON.stringify(seen)); } // 처음에는 지난 7일 치부터
+  }
+  return seen;
+}
+const seenAt = k => Math.max(seenMap()[k] || 0, seen.base, Date.now() - 35*864e5);
+function markSeen(k, at){
+  if (!(at > seenAt(k))) return;
+  seen[k] = at;
+  for (const x of Object.keys(seen)) if (x !== "base" && seen[x] < Date.now() - 35*864e5) delete seen[x];
+  store("wo-seen-" + me, JSON.stringify(seen));
+}
+// 이사님에게는 멘트를 안 단 새 보고, 직원에게는 새 멘트
+const newsAt = (fb, who, at) => me === BOSS ? (who === BOSS || fb?.at >= at ? 0 : at) : who === me ? fb?.at || 0 : 0;
+const orderNews = id => reports.filter(x => x.orderId === id).map(x => newsAt(x.fb, x.name, x.at));
+const orderNew = id => orderNews(id).filter(t => t > seenAt(id)).length;
+const wkId = x => `w|${x.person}|${x.kind}|${x.day}`;
+const wkNew = () => wkNews.filter(x => newsAt(x.fb, x.person, x.up) > seenAt(wkId(x)));
+function seeOrder(id){ markSeen(id, Math.max(0, ...orderNews(id))); drawNews(); }
+function drawNews(){
+  if (!me) return;
+  const word = me === BOSS ? "새 보고" : "새 멘트", wk = wkNew(), n = orders.reduce((a, o) => a + orderNew(o.id), 0);
+  document.querySelectorAll("[data-nb]").forEach(x => { const c = x.dataset.nb === "work" ? wk.length : n; x.textContent = c || ""; x.title = c ? `${word} ${c}건` : ""; });
+  document.querySelectorAll("[data-nt]").forEach(x => { const c = orderNew(x.dataset.nt); x.textContent = c ? `${word} ${c}` : ""; });
+  const box = $("#wknews");
+  if (box){
+    box.innerHTML = wk.length ? `<div class="panel stack" style="padding:12px;gap:8px"><b>${word} ${wk.length}건</b><div class="row">${wk.map((x, i) => `<button type="button" data-wkgo="${i}">${me === BOSS ? esc(x.person) + " · " : ""}${WK_KIND[x.kind]} ${esc(wkTitle(x.kind, wkDate(x.day)))}</button>`).join("")}</div></div>` : "";
+    box.querySelectorAll("[data-wkgo]").forEach(b => b.onclick = () => { const x = wk[b.dataset.wkgo]; wkKind = x.kind; wkDay = wkDate(x.day); wkLoad(); });
+  }
+  document.title = (n + wk.length ? `(${n + wk.length}) ` : "") + "업무지시서";
+}
+async function loadWkNews(){
+  if (!me || !pin || Date.now() - wkNewsAt < 60000) return;
+  const who = me; wkNewsAt = Date.now();
+  try {
+    const j = await rpc("wo_work_load", { p_name: who, p_pin: pin, p_from: ymd(new Date(Date.now() - 35*864e5)), p_to: ymd(new Date()) });
+    if (who !== me || j.r !== "ok") return;
+    wkNews = j.rows; drawNews();
+  } catch(e){}
+}
+
 /* ---------- 이사님 멘트 ---------- */
 const FB_MARKS = ["확인", "보완 필요", "다시 하기"];
 let fbEdit = null; // { k, m, t } 지금 쓰는 멘트
@@ -340,6 +388,7 @@ document.addEventListener("click", async e => {
     const fb = del ? null : { m, t: t.trim().replace(/\s+/g, " "), at: Date.now() };
     if (row) row.fb = fb;
     const now = fbFind(k); if (now) now.fb = fb;
+    const nw = wkNews.find(x => wkId(x) === k); if (nw) nw.fb = fb;
     if (fbEdit?.k === k) fbEdit = null;
     toast(del ? "멘트를 지웠습니다." : "멘트를 저장했습니다. 직원 화면에 나타납니다.");
     if (me === BOSS){ fbDraw(); refresh().catch(() => {}); }
@@ -367,11 +416,12 @@ function detailHTML(o){
 function ticketHead(o){
   const st = statusOf(o);
   return `<summary><span class="no">No.${orderNo(o)}</span><span class="pill s-${esc(st)}">${esc(st)}</span>
-    <span class="tt">${esc(o.title)}</span><span></span>
+    <span class="tt">${esc(o.title)} <span class="nb" data-nt="${esc(o.id)}"></span></span><span></span>
     <span class="meta">${o.routine ? "<span>루틴</span>" : ""}<span>${esc(o.type)}</span><span>기한 ${esc(o.dueLabel)}</span><span class="p-${esc(o.priority)}">${esc(o.priority)}</span><span>${o.assignees.map(esc).join(", ")}</span></span></summary>`;
 }
 function bindDetails(root){
-  root.querySelectorAll("details.ticket").forEach(d => d.addEventListener("toggle", () => { if (d.open) openId = d.dataset.id; else if (openId === d.dataset.id) openId = null; }));
+  root.querySelectorAll("details.ticket").forEach(d => d.addEventListener("toggle", () => { if (d.open){ openId = d.dataset.id; seeOrder(openId); } else if (openId === d.dataset.id) openId = null; }));
+  drawNews();
 }
 
 /* ---------- employee ---------- */
@@ -419,7 +469,7 @@ async function sendReport(id, btn){
   } catch(e){ toast("보고를 저장하지 못했습니다. 인터넷 연결을 확인하고 다시 눌러 주세요."); btn.disabled = false; }
 }
 
-const STAFF_TABS = () => `<div class="tabs" role="tablist"><button role="tab" id="stab-orders" aria-selected="${staffTab==="orders"}">내 지시</button><button role="tab" id="stab-work" aria-selected="${staffTab==="work"}">업무보고</button></div>`;
+const STAFF_TABS = () => `<div class="tabs" role="tablist"><button role="tab" id="stab-orders" aria-selected="${staffTab==="orders"}">내 지시<span class="nb" data-nb="orders"></span></button><button role="tab" id="stab-work" aria-selected="${staffTab==="work"}">업무보고<span class="nb" data-nb="work"></span></button></div>`;
 function bindStaffTabs(){
   $("#stab-orders").onclick = () => { staffTab = "orders"; render(); };
   $("#stab-work").onclick = () => { staffTab = "work"; wkState = "idle"; wkKind = "day"; wkDay = null; render(); };
@@ -429,10 +479,10 @@ function bindStaffTabs(){
 function renderAdmin(){
   let h = `<div class="tabs" role="tablist">
     <button role="tab" id="tab-new" aria-selected="${adminTab==="new"}">새 지시 쓰기</button>
-    <button role="tab" id="tab-list" aria-selected="${adminTab==="list"}">지시 목록 ${orders.length ? `(${orders.length})` : ""}</button>
+    <button role="tab" id="tab-list" aria-selected="${adminTab==="list"}">지시 목록 ${orders.length ? `(${orders.length})` : ""}<span class="nb" data-nb="orders"></span></button>
     <button role="tab" id="tab-routine" aria-selected="${adminTab==="routine"}">루틴업무</button>
     <button role="tab" id="tab-board" aria-selected="${adminTab==="board"}">현황판</button>
-    <button role="tab" id="tab-work" aria-selected="${adminTab==="work"}">업무보고</button>
+    <button role="tab" id="tab-work" aria-selected="${adminTab==="work"}">업무보고<span class="nb" data-nb="work"></span></button>
     <button role="tab" id="tab-pins" aria-selected="${adminTab==="pins"}">직원 비밀번호</button></div>`;
   h += `<div id="pane"></div>`;
   $("#app").innerHTML = h;
@@ -443,6 +493,7 @@ function renderAdmin(){
   $("#tab-work").onclick = () => { adminTab = "work"; wkState = "idle"; wkKind = "day"; wkDay = null; issued = {}; render(); };
   $("#tab-pins").onclick = () => { adminTab = "pins"; render(); };
   if (adminTab === "work") wkOpen($("#pane")); else if (adminTab === "new") renderForm(); else if (adminTab === "routine") rtForm ? renderForm(true) : renderRoutines(); else if (adminTab === "board") renderBoard(); else if (adminTab === "pins") renderPins(); else renderList();
+  drawNews();
 }
 
 function renderList(){
@@ -790,12 +841,14 @@ async function wkLoad(){
 function wkDraw(){
   const root = $("#wk"); if (!root) return;
   const isBoss = me === BOSS, today = wkStart(wkKind, new Date());
-  let h = `<div class="stack"><div class="chips">${Object.entries(WK_KIND).map(([k, l]) => `<label class="chip"><input type="radio" name="wkkind" value="${k}" ${k === wkKind ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
+  let h = `<div class="stack"><div id="wknews"></div><div class="chips">${Object.entries(WK_KIND).map(([k, l]) => `<label class="chip"><input type="radio" name="wkkind" value="${k}" ${k === wkKind ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
     <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><button type="button" data-wkmv="-1" aria-label="이전">◀</button><h2 style="text-align:center;font-size:19px">${wkTitle(wkKind, wkDay)}</h2><button type="button" data-wkmv="1" aria-label="다음" ${wkDay >= today ? "disabled" : ""}>▶</button></div>`;
   if (wkState === "loading") h += `<div class="empty">불러오는 중입니다…</div>`;
   else if (wkState === "fail") h += `<div class="banner">보고를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.</div><button type="button" id="wkretry">다시 불러오기</button>`;
   else h += isBoss ? wkBossHTML() : wkStaffHTML();
   root.innerHTML = h + `</div>`;
+  if (wkState === "ok") wkRows.filter(x => x.kind === wkKind).forEach(x => markSeen(wkId(x), newsAt(x.fb, x.person, x.up)));
+  drawNews();
   root.querySelectorAll("[name=wkkind]").forEach(i => i.onchange = () => { wkKind = i.value; wkDay = wkStart(wkKind, new Date()); wkLoad(); });
   root.querySelectorAll("[data-wkmv]").forEach(b => b.onclick = () => { wkDay = wkMove(wkKind, wkDay, Number(b.dataset.wkmv)); wkLoad(); });
   const rt = $("#wkretry"); if (rt) rt.onclick = wkLoad;
@@ -805,7 +858,7 @@ const wkView = r => wkSections(r.person, r.kind, r.body).map(([l, v]) => `<div><
 function wkBossHTML(){
   const rows = wkRows.filter(r => r.kind === wkKind), names = Object.keys(TEAM_OF), miss = names.filter(n => !rows.some(r => r.person === n));
   return `<div class="panel" style="padding:14px"><b>낸 사람 ${rows.length}명 · 안 낸 사람 ${miss.length}명</b>${miss.length ? `<div class="muted small">안 냄: ${miss.map(esc).join(", ")}</div>` : ""}</div>` +
-    (rows.length ? names.flatMap(n => rows.filter(r => r.person === n)).map(r => `<details class="ticket" open><summary><span class="tt">${esc(r.person)} <span class="muted small">${esc(TEAM_OF[r.person])}</span></span><span class="small muted">${fmtTime(r.up)}${r.edited ? " 고침" : ""}</span></summary>
+    (rows.length ? names.flatMap(n => rows.filter(r => r.person === n)).map(r => `<details class="ticket" open><summary><span class="tt">${esc(r.person)} ${newsAt(r.fb, r.person, r.up) > seenAt(wkId(r)) ? `<span class="nb">새 보고</span> ` : ""}<span class="muted small">${esc(TEAM_OF[r.person])}</span></span><span class="small muted">${fmtTime(r.up)}${r.edited ? " 고침" : ""}</span></summary>
       <div class="body">${wkView(r)}${fbHTML(`w|${r.person}|${r.kind}|${r.day}`, r.fb, r.person, r.up)}<div class="row"><button type="button" data-wkcopy="${esc(r.person)}">글 복사</button></div></div></details>`).join("") : `<div class="empty">아직 낸 보고가 없습니다.</div>`);
 }
 function wkBossBind(root){
@@ -870,8 +923,9 @@ function render(){
   return renderStaff();
 }
 function rerenderData(){
+  drawNews();
   // keep the form intact while the boss is typing
-  if (me === BOSS && adminTab === "new"){ const t = document.getElementById("tab-list"); if (t) t.textContent = `지시 목록 (${orders.length})`; return; }
+  if (me === BOSS && adminTab === "new"){ const t = document.getElementById("tab-list"); if (t) t.firstChild.textContent = `지시 목록 (${orders.length})`; return; }
   if (me === BOSS && adminTab === "routine" && rtForm) return; // 루틴 쓰는 중
   if (me && (me === BOSS ? adminTab : staffTab) === "work") return; // 업무보고 보는 중·쓰는 중
   if (document.querySelector("[data-fbform]")) return; // 멘트 쓰는 중
@@ -889,7 +943,7 @@ window.addEventListener("hashchange", () => { initHash(); if (me) render(); });
   const saved = load("wo-me"); if (saved && load("wo-pin") && (saved === BOSS || TEAM_OF[saved])){ me = saved; pin = load("wo-pin"); }
   render();
   const timer = setTimeout(() => { if (me && !loaded.o) { slow = true; rerenderData(); } }, 10000);
-  const tick = () => refresh().then(() => clearTimeout(timer)).catch(() => {});
+  const tick = () => { loadWkNews(); return refresh().then(() => clearTimeout(timer)).catch(() => {}); };
   await tick();
   setInterval(() => { if (!document.hidden) tick(); }, 10000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) tick(); });
