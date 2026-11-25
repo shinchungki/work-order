@@ -83,6 +83,8 @@ dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .hist li{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:16px;padding:8px 10px;background:var(--bg);border-radius:8px}
 .fb{border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:8px;padding:8px 12px;font-size:16px;overflow-wrap:anywhere}
 .fb.fb-2{border-color:var(--warn);background:var(--warn-soft)}.fb.fb-3{border-color:var(--bad);background:var(--bad-soft)}
+#pop{position:fixed;inset:0;z-index:15;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px}#pop[hidden]{display:none}
+#pop .panel{width:100%;max-width:460px;max-height:100%;overflow:auto;background:var(--surface);overflow-wrap:anywhere}
 .hist .fbwrap{grid-column:1/-1;margin-top:4px}
 .hist .when{grid-column:2;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
 .copybox{white-space:pre-wrap;font-size:16px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;max-height:320px;overflow:auto;overflow-wrap:anywhere}
@@ -130,6 +132,7 @@ input[type=text],input[type=password],input[type=date],input[type=number],textar
 <main class="wrap" id="app">
   <div class="empty">불러오는 중입니다…</div>
 </main>
+<div id="pop" role="dialog" aria-modal="true" aria-labelledby="pop-h" hidden></div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -155,8 +158,9 @@ async function refresh(redraw = true){
   if (j.r === "locked") throw new Error("locked");
   if (j.r !== "ok"){ const who = me; logout(); pickPin(who, "비밀번호가 바뀌었습니다. 다시 넣어 주세요."); return; }
   const os = j.orders, rs = j.reports, ss = j.sends; staff = j.staff || []; options = j.options || []; routines = j.routines || [];
-  const first = !loaded.o, raw = JSON.stringify([os, rs, ss, staff, routines]);
+  const first = !loaded.o, raw = JSON.stringify([os, rs, ss, staff, routines, j.fbsends]);
   loaded.o = loaded.r = true; slow = false;
+  unread = j.unread || []; fbSends = j.fbsends || {}; drawPop();
   if (raw === lastRaw && !first) return;
   lastRaw = raw; orders = os; reports = rs; sends = ss;
   if (redraw) rerenderData();
@@ -242,7 +246,7 @@ function renderPick(){
 /* ---------- password ---------- */
 const PIN_MSG = { bad: "비밀번호가 맞지 않습니다.", locked: "여러 번 틀려 잠겼습니다. 10분 뒤 다시 하세요.", length: "숫자 6~12자리로 정해 주세요.", same: "받은 번호와 다른 번호로 정해 주세요." };
 function logout(){
-  loadSeq++; wkNews = []; wkNewsAt = 0; document.title = "업무지시서"; fbEdit = null; me = pin = asking = null; orders = []; reports = []; sends = []; staff = []; options = []; issued = {};
+  loadSeq++; wkNews = []; wkNewsAt = 0; document.title = "업무지시서"; fbEdit = null; unread = []; popOff.clear(); drawPop(); me = pin = asking = null; orders = []; reports = []; sends = []; staff = []; options = []; issued = {};
   loaded = { o:false, r:false }; lastRaw = ""; lastSaved = null; confirmDel = null;
   store("wo-me", null); store("wo-pin", null);
   wkSeq++; wkRows = []; wkForm = null; wkState = "idle"; wkKind = "day"; wkDay = null; staffTab = "orders"; adminTab = "list";
@@ -355,6 +359,35 @@ async function loadWkNews(){
 
 /* ---------- 이사님 멘트 ---------- */
 const FB_MARKS = ["확인", "보완 필요", "다시 하기"];
+const FB_KAKAO = false; // 멘트 카톡: 전송 프로그램·저장 쪽(fbkakao.sql)을 켠 뒤에만 true
+const FB_SEND = { pending: "카톡 대기", sending: "카톡 보내는 중", sent: "카톡 보냄", failed: "카톡 실패" };
+let unread = [], fbSends = {}, popK = null;
+const popOff = new Set(); // 저장이 안 돼 이번만 닫은 것
+const popId = u => u.k + "|" + u.at;
+function drawPop(){
+  const box = $("#pop"), list = me && me !== BOSS ? unread.filter(u => !popOff.has(popId(u))) : [], u = list[0];
+  const lock = on => { box.hidden = !on; document.body.style.overflow = on ? "hidden" : ""; $("#app").inert = on; $("header.top").inert = on; };
+  if (!u){ popK = null; if (!box.hidden){ lock(false); box.innerHTML = ""; } return; }
+  if (box.hidden && document.activeElement?.matches?.("textarea,input:not([type=radio]):not([type=checkbox])")) return; // 쓰는 중이면 다 쓴 뒤에
+  if (popK === popId(u)){ $("#pop-n").textContent = list.length > 1 ? `(${list.length}건 남음)` : ""; return; }
+  popK = popId(u);
+  const what = u.k[0] === "o" ? `${u.title} · ${u.status} 보고` : `${WK_KIND[u.kind]}보고 · ${wkTitle(u.kind, wkDate(u.day))}`;
+  box.innerHTML = `<div class="panel stack"><h2 id="pop-h" style="margin:0">이사님 멘트가 왔습니다 <span class="muted small" id="pop-n">${list.length > 1 ? `(${list.length}건 남음)` : ""}</span></h2><p class="muted small" style="margin:0">${esc(what)}</p>
+    <div class="fb fb-${FB_MARKS.indexOf(u.m) + 1}"><b>${esc(u.m)}</b>${u.t ? `<div style="white-space:pre-wrap">${esc(u.t)}</div>` : ""}<div class="muted small">${fmtTime(u.at)}</div></div>
+    <span class="small" id="pop-e" role="alert"></span><div class="row"><button type="button" class="primary" id="pop-ok">확인했습니다</button><button type="button" class="ghost" id="pop-x" hidden>이번만 닫기</button></div></div>`;
+  lock(true); $("#pop-ok").focus();
+  $("#pop-x").onclick = () => { popOff.add(popId(u)); drawPop(); };
+  $("#pop-ok").onclick = async () => {
+    const who = me, [t, a, c, d] = u.k.split("|"), btn = $("#pop-ok"); btn.disabled = true;
+    let x; try { x = await rpc("wo_fb_read", { p_name: who, p_pin: pin, p_kind: t === "o" ? "order" : "work", p_key: t === "o" ? { id: a } : { kind: c, day: d }, p_at: u.at }); } catch(e){}
+    if (who !== me) return;
+    if (x === "ok" || x === "gone"){ loadSeq++; unread = unread.filter(v => popId(v) !== popId(u)); drawPop(); refresh().catch(() => {}); return; } // gone: 그새 고치거나 지운 멘트 → 새로 받음
+    if (popK !== popId(u)) return;
+    btn.disabled = false; $("#pop-e").textContent = "저장하지 못했습니다. 인터넷 연결을 확인하고 다시 눌러 주세요."; $("#pop-x").hidden = false;
+  };
+}
+document.addEventListener("focusout", () => setTimeout(drawPop, 300));
+const fbStatus = k => k[0] === "o" ? reports.find(x => "o|" + x.id === k)?.status : "";
 let fbEdit = null; // { k, m, t } 지금 쓰는 멘트
 function fbHTML(k, fb, who, up){
   const boss = me === BOSS;
@@ -362,10 +395,11 @@ function fbHTML(k, fb, who, up){
   if (boss && fbEdit?.k === k){
     const marks = k[0] === "o" ? FB_MARKS : FB_MARKS.slice(0, 2);
     return `<div class="fbwrap panel stack" data-fbform style="padding:12px;gap:10px"><div class="chips">${marks.map(m => `<label class="chip"><input type="radio" name="fbm" value="${m}" ${fbEdit.m === m ? "checked" : ""}><span>${m}</span></label>`).join("")}</div>
-      <input type="text" data-fbt maxlength="200" placeholder="한 줄 멘트 (선택)" aria-label="한 줄 멘트" value="${esc(fbEdit.t)}">
+      <textarea data-fbt rows="4" maxlength="1000" placeholder="멘트 (선택, 1000자까지)" aria-label="멘트">${esc(fbEdit.t)}</textarea>${FB_KAKAO ? `
+      <label class="row small" style="gap:8px"><input type="checkbox" data-fbkk ${fbEdit.kk ? "checked" : ""} style="width:20px;height:20px"> 카톡으로도 보내기</label>` : ""}
       <div class="row"><button type="button" class="primary" data-fbsave>멘트 저장</button><button type="button" class="ghost" data-fbno>취소</button>${fb ? `<button type="button" class="ghost" data-fbdel>멘트 지우기</button>` : ""}</div></div>`;
   }
-  return `<div class="fbwrap">${fb ? `<div class="fb fb-${FB_MARKS.indexOf(fb.m) + 1}"><b>이사님 멘트 · ${esc(fb.m)}</b>${fb.t ? `<div>${esc(fb.t)}</div>` : ""}<div class="muted small">${fmtTime(fb.at)}${up > fb.at ? " · 보고를 고치기 전에 받은 멘트" : ""}</div></div>` : ""}${boss ? `<button type="button" data-fb="${esc(k)}"${fb ? ' style="margin-top:6px"' : ""}>${fb ? "멘트 고치기" : "멘트 달기"}</button>` : ""}</div>`;
+  return `<div class="fbwrap">${fb ? `<div class="fb fb-${FB_MARKS.indexOf(fb.m) + 1}"><b>이사님 멘트 · ${esc(fb.m)}</b>${fb.t ? `<div style="white-space:pre-wrap">${esc(fb.t)}</div>` : ""}<div class="muted small">${fmtTime(fb.at)}${up > fb.at ? " · 보고를 고치기 전에 받은 멘트" : ""}${boss ? fb.read ? ` · <b>읽음 ${fmtTime(fb.read)}</b>` : " · 아직 안 읽음" : ""}${boss && fbSends[k] ? ` · ${FB_SEND[fbSends[k].state]}${fbSends[k].note ? ` (${esc(fbSends[k].note)})` : ""}` : ""}</div></div>` : ""}${boss ? `<button type="button" data-fb="${esc(k)}"${fb ? ' style="margin-top:6px"' : ""}>${fb ? "멘트 고치기" : "멘트 달기"}</button>` : ""}</div>`;
 }
 const fbFind = k => { const [t, a, b, c] = k.split("|"); return t === "o" ? reports.find(x => x.id === a) : wkRows.find(x => x.person === a && x.kind === b && x.day === c); };
 const fbDraw = () => adminTab === "work" ? wkDraw() : render();
@@ -373,24 +407,25 @@ document.addEventListener("input", e => {
   if (!fbEdit) return;
   if (e.target.name === "fbm") fbEdit.m = e.target.value;
   if (e.target.matches?.("[data-fbt]")) fbEdit.t = e.target.value;
+  if (e.target.matches?.("[data-fbkk]")) fbEdit.kk = e.target.checked;
 });
 document.addEventListener("click", async e => {
   const b = e.target.closest?.("[data-fb],[data-fbno],[data-fbsave],[data-fbdel]"); if (!b || me !== BOSS) return;
-  if (b.dataset.fb){ const fb = fbFind(b.dataset.fb)?.fb; fbEdit = { k: b.dataset.fb, m: fb?.m || "", t: fb?.t || "" }; return fbDraw(); }
+  if (b.dataset.fb){ const fb = fbFind(b.dataset.fb)?.fb; fbEdit = { k: b.dataset.fb, m: fb?.m || "", t: fb?.t || "", kk: !fb && fbStatus(b.dataset.fb) === "문제발생" }; return fbDraw(); }
   if (!fbEdit) return;
   if ("fbno" in b.dataset){ fbEdit = null; return fbDraw(); }
-  const del = "fbdel" in b.dataset, { k, m, t } = fbEdit, [type, a, c, d] = k.split("|"), row = fbFind(k);
+  const del = "fbdel" in b.dataset, { k, m, t, kk } = fbEdit, [type, a, c, d] = k.split("|"), row = fbFind(k);
   if (!del && !m) return toast("확인·보완 필요 같은 표시를 먼저 고르세요.");
   b.disabled = true;
   try {
-    const x = await rpc("wo_feedback", { p_boss: pin, p_kind: type === "o" ? "order" : "work", p_key: type === "o" ? { id: a } : { person: a, kind: c, day: d }, p_mark: del ? "" : m, p_text: del ? "" : t });
-    if (x !== "ok") throw 0;
-    const fb = del ? null : { m, t: t.trim().replace(/\s+/g, " "), at: Date.now() };
+    const x = await rpc("wo_feedback", { p_boss: pin, p_kind: type === "o" ? "order" : "work", p_key: type === "o" ? { id: a } : { person: a, kind: c, day: d }, p_mark: del ? "" : m, p_text: del ? "" : t, ...(FB_KAKAO ? { p_kakao: !del && !!kk } : {}) });
+    if (!["ok", "busy", "nokakao"].includes(x)) throw 0;
+    const fb = del ? null : { m, t: t.replace(/\r/g, "").trim(), at: Date.now() };
     if (row) row.fb = fb;
     const now = fbFind(k); if (now) now.fb = fb;
     const nw = wkNews.find(x => wkId(x) === k); if (nw) nw.fb = fb;
     if (fbEdit?.k === k) fbEdit = null;
-    toast(del ? "멘트를 지웠습니다." : "멘트를 저장했습니다. 직원 화면에 나타납니다.");
+    toast(del ? "멘트를 지웠습니다." : x === "busy" ? "멘트는 저장했습니다. 앞 카톡을 보내는 중이라 카톡은 나가지 않습니다." : x === "nokakao" ? "멘트는 저장했습니다. 이 사람에게는 카톡을 보낼 수 없습니다." : FB_KAKAO && kk ? "멘트를 저장했습니다. 맥북이 켜져 있으면 카톡도 나갑니다." : "멘트를 저장했습니다. 직원 화면에 나타납니다.");
     if (me === BOSS){ fbDraw(); refresh().catch(() => {}); }
   } catch(err){ b.disabled = false; toast("저장하지 못했습니다. 인터넷 연결을 확인하고 다시 눌러 주세요."); }
 });
